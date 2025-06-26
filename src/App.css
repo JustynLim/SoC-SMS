@@ -1,0 +1,374 @@
+/* Base Styles */
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden; /* Prevent scrolling if content exceeds viewport */
+}
+
+#root {
+  margin: 0 auto;
+  min-height: 100vh;
+}
+
+.content-container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+/* Logo Styles */
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+/* Animation */
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+/* Card Styles */
+.card {
+  padding: 2em;
+}
+
+/* Text Styles */
+.read-the-docs {
+  color: #888;
+}
+
+.login-page-container {
+  display: flex;
+  min-height: 100vh;
+  width: 100vw; /* Add this to ensure it takes full viewport width */
+  background-color: #f5f5f5;
+  justify-content: center; /* Center horizontally */
+  align-items: center;   /* Center vertically */
+}
+
+.login-box {
+  width: 100%;
+  padding: 3rem;
+  background: white;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 2rem;
+  font-size: 1.75rem;
+  color: #333;
+}
+
+.login-input {
+  width: 100%;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 1rem;
+  transition: border-color 0.3s;
+}
+
+.login-input:focus {
+  outline: none;
+  border-color: #646cff;
+}
+
+.login-input.error {
+  border-color: #ff4444;
+}
+
+.login-button {
+  width: 100%;
+  padding: 0.75rem;
+  background-color: #646cff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.login-button:hover {
+  background-color: #535bf2;
+}
+
+.login-button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+.login-links {
+  display: flex;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+.login-link {
+  color: #646cff;
+  text-decoration: none;
+  font-size: 0.9rem;
+  transition: color 0.3s;
+}
+
+.login-link:hover {
+  color: #535bf2;
+  text-decoration: underline;
+}
+
+.error-message {
+  color: #ff4444;
+  margin: -0.5rem 0 1rem 0;
+  font-size: 0.875rem;
+}
+
+.api-error {
+  color: #ff4444;
+  background-color: #ffebee;
+  padding: 0.75rem;
+  border-radius: 6px;
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+/* New Register Page Styles (similar to login for consistency) */
+
+.register-page-container {
+  display: flex;
+  min-height: 100vh;
+  width: 100vw; /* Add this to ensure it takes full viewport width */
+  background-color: #f5f5f5;
+  justify-content: center; /* Center horizontally */
+  align-items: center;   /* Center vertically */
+}
+
+.register-box {
+  width: 100%;
+  padding: 3rem;
+  background: white;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.register-header span {
+  text-align: center;
+  display: block;
+  margin-bottom: 2rem;
+  font-size: 1.75rem;
+  color: #333;
+}
+
+.register-input {
+  width: 100%;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 1rem;
+  transition: border-color 0.3s;
+}
+
+.register-input:focus {
+  outline: none;
+  border-color: #646cff;
+}
+
+.register-input.error {
+  border-color: #ff4444;
+}
+
+.register-button {
+  width: 100%;
+  padding: 0.75rem;
+  background-color: #646cff; /* Consistent color with login button */
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  margin-top: 1rem; /* Add some space above the button */
+}
+
+.register-button:hover {
+  background-color: #535bf2;
+}
+
+.register-button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+.register-links {
+  display: flex;
+  justify-content: center; /* Center the link */
+  margin-top: 1.5rem;
+}
+
+.register-link {
+  color: #646cff; /* Consistent link color */
+  text-decoration: none;
+  font-size: 0.9rem;
+  transition: color 0.3s;
+}
+
+.register-link:hover {
+  color: #535bf2;
+  text-decoration: underline;
+}
+
+.success-message {
+  color: #4CAF50;
+  background-color: #e8f5e9;
+  padding: 0.75rem;
+  border-radius: 6px;
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+/* New 2FA-specific classes */
+.twofa-page-container {
+  display: flex;
+  min-height: 100vh;
+  width: 100vw; /* Add this to ensure it takes full viewport width */
+  background-color: #f5f5f5;
+  justify-content: center; /* Center horizontally */
+  align-items: center;   /* Center vertically */
+}
+
+.twofa-setup-container {
+  text-align: center;
+  border-radius: 8px;
+  margin-top: 1rem;
+  display: inline-block;
+  width: auto;
+}
+
+.twofa-setup-box {
+  width: 50%;
+  padding: 6rem;
+  text-align: center;
+  background: white;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-radius: 12px;
+  max-width: 490px;
+  max-height: 490px;
+  margin: 0 auto;
+}
+
+.twofa-header {
+  text-align: center;
+  margin-bottom: 2rem;
+  font-size: 1.75rem;
+  color: #333;
+}
+
+.twofa-qr-code {
+  margin: 1rem auto;
+  padding: 0.5rem;
+  background: white;
+}
+
+.twofa-manual-code {
+  font-family: monospace;
+  background: #f5f5f5;
+  padding: 0.75rem;
+  margin: 1rem auto;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  letter-spacing: normal;
+  word-wrap: break-word;
+  white-space: normal;
+  display: block;
+  text-align: center;
+  box-sizing: border-box;
+  width: auto;
+  max-width: 60%;
+  overflow-x: auto;
+}
+
+.qr-code-container {
+  margin-bottom: 1.5rem;
+  display: flex; /* Use flex to center the image if needed */
+  justify-content: center;
+}
+
+.qr-code-img {
+  border: 1px solid #ddd; /* Optional: add a border to the QR code */
+  padding: 5px;
+  background-color: white;
+}
+
+.manual-code-display {
+  font-family: 'monospace', monospace;
+  background: #eee;
+  padding: 10px;
+  border-radius: 4px;
+  font-size: 1.1rem;
+  letter-spacing: 1px;
+  color: #333;
+  margin-bottom: 1.5rem;
+  display: inline-block; /* To make background fit content */
+}
+
+/* Centered Content for Wider Screens */
+@media (min-width: 768px) {
+  .login-box,
+  .register-box {
+    max-width: 500px;
+    margin: 0 auto;
+    border-radius: 12px;
+  }
+}
+
+/* Responsive Adjustments */
+@media (max-width: 600px) {
+  .login-box,
+  .register-box {
+    padding: 2rem;
+  }
+  
+  .login-header,
+  .register-header {
+    text-align: center;
+    font-size: 1.5rem;
+  }
+  
+  .content-container {
+    padding: 1rem;
+  }
+}
