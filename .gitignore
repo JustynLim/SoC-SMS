@@ -25,3 +25,5 @@ dist-ssr
 BCSCUN Student Master List_after preboard_Apr2022_v4.xlsm
 BCSCUN Student Master List_after preboard_Apr2022_v4_Active_filtered.csv
 .env
+*.csv
+__pycache__/flask2db.cpython-311.pyc
