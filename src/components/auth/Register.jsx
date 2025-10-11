@@ -12,7 +12,7 @@ export default function Register() {
 
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
-  // const [adminSetupInfo, setAdminSetupInfo] = useState(null);
+  const [adminSetupInfo, setAdminSetupInfo] = useState(null);
   const [admin2FACode, setAdmin2FACode] = useState('');
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
   // const [adminVerified, setAdminVerified] = useState(false);
@@ -25,6 +25,7 @@ export default function Register() {
     const checkIfFirstUser = async () => {
       try {
         const response = await fetch('http://localhost:5001/api/check-first-user');
+        if (!response.ok) throw new Error('Failed to check first user status');
         const data = await response.json();
         setIsFirstUser(data.isFirstUser);  // Set the flag based on the response
       } 
@@ -36,16 +37,28 @@ export default function Register() {
     checkIfFirstUser();
   }, []);
 
-  const validate = () => {
+  // const validate = () => {
+  //   const newErrors = {};
+  //   if (!isEmail(form.email)) newErrors.email = 'Enter a valid email';
+  //   if (!form.password) newErrors.password = 'Password is required';
+  //   if (form.password !== form.confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
+  //   if (isFirstUser && form.twoFACode) { // Only require 2FA code if not the first user
+  //     // Only require 2FA code *after* adminSetupInfo is shown (i.e., after QR code is given)
+  //   if (!/^\d{6}$/.test(form.twoFACode)) {newErrors.twoFACode = 'Enter a valid 6-digit 2FA code';}
+  //   }
+  //     //if (adminSetupInfo && !/^\d{6}$/.test(form.twoFACode)) {newErrors.twoFACode = 'Enter a valid 6-digit 2FA code';}
+  //   setErrors(newErrors);
+  //   return Object.keys(newErrors).length === 0;
+  // };
+
+    const validate = () => {
     const newErrors = {};
     if (!isEmail(form.email)) newErrors.email = 'Enter a valid email';
     if (!form.password) newErrors.password = 'Password is required';
     if (form.password !== form.confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
-    if (isFirstUser && form.twoFACode) { // Only require 2FA code if not the first user
-      // Only require 2FA code *after* adminSetupInfo is shown (i.e., after QR code is given)
-    if (!/^\d{6}$/.test(form.twoFACode)) {newErrors.twoFACode = 'Enter a valid 6-digit 2FA code';}
+    if (!isFirstUser && !/^\d{6}$/.test(form.twoFACode)) {
+      newErrors.twoFACode = 'Enter a valid 6-digit 2FA code';
     }
-      //if (adminSetupInfo && !/^\d{6}$/.test(form.twoFACode)) {newErrors.twoFACode = 'Enter a valid 6-digit 2FA code';}
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -58,40 +71,80 @@ export default function Register() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validate()) return;
+    setIsLoading(true);
+    if (!validate()) {
+      setIsLoading(false);
+      return;
+    }
 
-    const requestData = {...form};
+    //const requestData = {...form};
 
     // if (isFirstUser){
     //     delete requestData.twoFACode;
     // }
 
-    try {
+  //   try {
+  //     const response = await fetch('http://localhost:5001/api/register', {
+  //       method: 'POST',
+  //       headers: { 'Content-Type': 'application/json' },
+  //       body: JSON.stringify(requestData)
+  //     });
+
+  //     if(!response.ok){
+  //       const errorData = await response.json().catch(() => ({}));
+  //       throw new Error(data.error || "Registration failed (77)");
+  //     }
+
+  //     const text = await response.text(); // Read as txt 1st
+  //     console.log(`Status: ${response.status}`,`Response text: ${text}`)
+
+  //     let data = {};
+  //     try {
+  //       data = JSON.parse(text); // Try to parse JSON
+  //     } 
+  //     catch {
+  //       throw new Error('Invalid server response (not JSON)');
+  //     }
+
+  //     //const data = await res.json();
+
+  //     if (!response.ok) throw new Error(data.error || 'Registration failed');
+
+  //     if (data.isAdmin) {
+  //       setAdminSetupInfo({
+  //         qrUrl: data.qrUrl,
+  //         manualCode: data.manualCode
+  //       });
+  //     }
+
+  //     setRegistrationSuccess(true);
+      
+  //   //   if (!data.isAdmin){
+  //   //   setTimeout(() => navigate('/login'), 4000);
+  //   //   }
+  //   } 
+    
+  //   catch (err) {
+  //     setErrors({ api: err.message });
+  //     console.error(`Registration error: ${err.message}`);
+  //   }
+  // };
+
+      try {
       const response = await fetch('http://localhost:5001/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestData)
+        body: JSON.stringify(form)
       });
 
-      if(!response.ok){
+      // First check if the response is OK
+      if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(data.error || "Registration failed (77)");
+        throw new Error(errorData.error || 'Registration failed');
       }
 
-      const text = await response.text(); // Read as txt 1st
-      console.log(`Status: ${response.status}`,`Response text: ${text}`)
-
-      let data = {};
-      try {
-        data = JSON.parse(text); // Try to parse JSON
-      } 
-      catch {
-        throw new Error('Invalid server response (not JSON)');
-      }
-
-      //const data = await res.json();
-
-      if (!response.ok) throw new Error(data.error || 'Registration failed');
+      // Try to parse JSON
+      const data = await response.json();
 
       if (data.isAdmin) {
         setAdminSetupInfo({
@@ -101,15 +154,13 @@ export default function Register() {
       }
 
       setRegistrationSuccess(true);
+      setTimeout(() => navigate('/login'), 3000);
       
-    //   if (!data.isAdmin){
-    //   setTimeout(() => navigate('/login'), 4000);
-    //   }
-    } 
-    
-    catch (err) {
-      setErrors({ api: err.message });
-      console.error(`Registration error: ${err.message}`);
+    } catch (err) {
+      console.error('Registration error:', err);
+      setErrors({ api: err.message || 'Registration failed. Please try again.' });
+    } finally {
+      setIsLoading(false);
     }
   };
 

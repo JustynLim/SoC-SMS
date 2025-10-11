@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; }
+    h1 { font-size: 18px; margin: 0 0 4mm; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #ddd; padding: 6px 8px; }
+    th { background: #f2f4f7; text-align: left; }
+    td.num { text-align: center; width: 8mm; }
+    tr:nth-child(even) td { background: #fbfbfd; }
+  </style>
+</head>
+<body>
+  <h1>Mentorship Name List ({{ session }})</h1>
+
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Name</th>
+        <th>Matric No</th>
+        <th>IC No</th>
+        <th>Phone</th>
+        <th>Email</th>
+        <th>Failed Courses</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for s in rows %}
+      <tr>
+        <td class="num">{{ loop.index }}</td>
+        <td>{{ s.STUDENT_NAME or '-' }}</td>
+        <td>{{ s.MATRIC_NO or '-' }}</td>
+        <td>{{ s.IC_NO or '-' }}</td>
+        <td>{{ s.MOBILE_NO or '-' }}</td>
+        <td>{{ s.EMAIL or '-' }}</td>
+        <td>{{ s.FAILED_COURSES or '-' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #111; }
+    h1 { font-size: 18px; margin: 0 0 4mm; }
+    .meta { margin: 0 0 8mm; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #ddd; padding: 6px 8px; }
+    th { background: #f2f4f7; text-align: left; }
+    td.num { text-align: center; width: 8mm; }
+    tr:nth-child(even) td { background: #fbfbfd; }
+    /* Page numbering (wkhtmltopdf header/footer via options can also be used) */
+  </style>
+</head>
+<body>
+  <h1>Internship Name List</h1>
+  <div class="meta">Course: {{ course_code }} &nbsp;&nbsp; Session: {{ session }}</div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Name</th>
+        <th>Matric No</th>
+        <th>IC No</th>
+        <th>Phone</th>
+        <th>Email</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for s in rows %}
+      <tr>
+        <td class="num">{{ loop.index }}</td>
+        <td>{{ s.STUDENT_NAME or '-' }}</td>
+        <td>{{ s.MATRIC_NO or '-' }}</td>
+        <td>{{ s.IC_NO or '-' }}</td>
+        <td>{{ s.MOBILE_NO or '-' }}</td>
+        <td>{{ s.EMAIL or '-' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

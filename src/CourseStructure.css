@@ -1,0 +1,23 @@
+.course-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 20px;
+}
+
+.course-table th,
+.course-table td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  background-color: white;
+}
+
+.course-table th {
+  position: sticky;
+  top: 0; /* Stick to the top of the viewport */
+  background-color: #f8f8f8;
+  z-index: 2;
+}
+
+.course-table tr:nth-child(even) {
+  background-color: #f9f9f9;
+}

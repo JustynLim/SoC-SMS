@@ -1,17 +1,16 @@
-import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React from "react";
+import Home from "../components/Home"; // <- no curly braces here
+import Sidebar from "../components/Sidebar";
 
-export const Home = () => {
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!localStorage.getItem('token')) navigate('/login');
-  }, []);
-
+const HomePage = () => {
   return (
-    <div>
-      <h1>Welcome to the homepage!</h1>
-      <button onClick={() => {localStorage.removeItem('token');navigate('/login');}}>Logout</button>
+    <div className="flex h-screen w-screen">
+      <Sidebar />
+      <div className="flex-1 p-8 w-full">
+        <Home />
+      </div>
     </div>
   );
 };
+
+export default HomePage;
