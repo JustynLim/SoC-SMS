@@ -399,122 +399,151 @@ export default function StudentsScoresPage() {
               top: 0,
               zIndex: 200,
               background: "white",
-              paddingBottom: 4,
+              paddingBottom: 8,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
             }}
           >
-            {/* Grid container with two rows */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gridTemplateAreas: `
-                  "cohort  cohort"
-                  ".       actions"
-                `,
-                rowGap: 8,
-                columnGap: 12,
-                alignItems: "center",
-              }}
-            >
-              {/* Row 1: Cohort left, spanning both columns */}
-              <div style={{ gridArea: "cohort", display: "flex", alignItems: "center", gap: 10 }}>
-                <label htmlFor="cohort">Cohort:</label>
-                <select
-                  id="cohort"
-                  value={selectedCohort}
-                  onChange={(e) => setSelectedCohort(e.target.value)}
-                >
-                  {cohorts.map((y) => (
-                    <option key={y} value={y}>
-                      {y}
-                    </option>
-                  ))}
-                </select>
-                {loadingCohorts && <span>Loading cohorts…</span>}
-                {errorCohorts && <span style={{ color: "red" }}>Failed to load cohorts</span>}
-              </div>
-
-              {/* Row 2: Actions aligned to the right; Columns left of Search, Search at far right */}
-              <div
+            {/* Left side: Cohort filter */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <label htmlFor="cohort" style={{ whiteSpace: "nowrap" }}>Cohort:</label>
+              <select
+                id="cohort"
+                value={selectedCohort}
+                onChange={(e) => setSelectedCohort(e.target.value)}
                 style={{
-                  gridArea: "actions",
-                  display: "flex",
-                  justifyContent: "flex-end",
-                  alignItems: "center",
-                  gap: 10,
-                  position: "relative", // anchor for the dropdown
-                  zIndex: 300,
+                  padding: "4px 8px",
+                  borderRadius: "4px",
+                  border: "1px solid #ddd",
                 }}
               >
-                {/* Columns button (left) */}
-                <div style={{ position: "relative" }}>
-                  <button
-                    onClick={() => setColsMenuOpen((v) => !v)}
-                    className="border px-3 py-1 rounded"
-                    aria-expanded={colsMenuOpen}
-                    title="Show/Hide columns"
-                  >
-                    Columns
-                  </button>
+                {cohorts.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+              {loadingCohorts && <span>Loading cohorts…</span>}
+              {errorCohorts && <span style={{ color: "red" }}>Failed to load cohorts</span>}
+            </div>
 
-                  {colsMenuOpen && (
-                    <div
-                      role="menu"
-                      style={{
-                        position: "absolute",
-                        right: 0,
-                        marginTop: 6,
-                        background: "white",
-                        border: "1px solid #ddd",
-                        borderRadius: 6,
-                        boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
-                        padding: 8,
-                        minWidth: 180,
-                        zIndex: 310,
-                      }}
-                    >
-                      <div style={{ fontWeight: 600, marginBottom: 6 }}>Show/Hide columns</div>
-                      {HIDABLE_META.map(({ key, label }) => (
-                        <label
-                          key={key}
-                          style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 2px", cursor: "pointer" }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={!hiddenMeta.has(key)}
-                            onChange={() => toggleHidden(key)}
-                          />
-                          <span>{label}</span>
-                        </label>
-                      ))}
-                      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
-                        <button onClick={() => setColsMenuOpen(false)} className="border px-2 py-1 rounded">
-                          Close
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Upload (middle) */}
+            {/* Right side: Columns, Upload, Search */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                position: "relative",
+              }}
+            >
+              {/* Columns button */}
+              <div style={{ position: "relative" }}>
                 <button
-                  onClick={() => { setSelectedFile(null); setUploadError(""); setUploadOpen(true); }}
-                  className="border px-3 py-1 rounded"
-                  title="Upload .xlsm file"
+                  onClick={() => setColsMenuOpen((v) => !v)}
+                  style={{
+                    padding: "4px 12px",
+                    borderRadius: "4px",
+                    border: "1px solid #ddd",
+                    background: "white",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                  aria-expanded={colsMenuOpen}
+                  title="Show/Hide columns"
                 >
-                  Import Marksheet
+                  Columns
                 </button>
 
-                {/* Search (rightmost) */}
-                <input
-                  type="search"
-                  placeholder="Search name…"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  style={{ border: "1px solid #ddd", borderRadius: 6, padding: "6px 10px", minWidth: 240 }}
-                  aria-label="Search student name"
-                />
+                {colsMenuOpen && (
+                  <div
+                    role="menu"
+                    style={{
+                      position: "absolute",
+                      right: 0,
+                      marginTop: 6,
+                      background: "white",
+                      border: "1px solid #ddd",
+                      borderRadius: 6,
+                      boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
+                      padding: 12,
+                      minWidth: 180,
+                      zIndex: 310,
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, marginBottom: 8, fontSize: '14px' }}>
+                      Show/Hide Columns
+                    </div>
+                    {HIDABLE_META.map(({ key, label }) => (
+                      <label
+                        key={key}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "4px 2px",
+                          cursor: "pointer",
+                          fontSize: '13px',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!hiddenMeta.has(key)}
+                          onChange={() => toggleHidden(key)}
+                        />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                    <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8, paddingTop: 8, borderTop: '1px solid #eee' }}>
+                      <button
+                        onClick={() => setColsMenuOpen(false)}
+                        style={{
+                          padding: "4px 12px",
+                          borderRadius: "4px",
+                          border: "1px solid #ddd",
+                          background: "white",
+                          cursor: "pointer",
+                          fontSize: '13px',
+                        }}
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
+
+              {/* Upload */}
+              <button
+                onClick={() => { setSelectedFile(null); setUploadError(""); setUploadOpen(true); }}
+                style={{
+                  padding: "4px 12px",
+                  borderRadius: "4px",
+                  border: "1px solid #ddd",
+                  background: "white",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+                title="Upload .xlsm file"
+              >
+                Import Marksheet
+              </button>
+
+              {/* Search */}
+              <input
+                type="search"
+                placeholder="Search name…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                style={{
+                  border: "1px solid #ddd",
+                  borderRadius: 6,
+                  padding: "6px 10px",
+                  minWidth: 240,
+                }}
+                aria-label="Search student name"
+              />
             </div>
           </div>
 
@@ -536,7 +565,7 @@ export default function StudentsScoresPage() {
                         </th>
                       ));
                     })()}
-                    {/* Course group headers (not sticky-left; only sticky-top via thStickyTopRow1) */}
+                    {/* Course group headers */}
                     {courseCodes.map((course) => {
                       const hide3 = hideAttempt3ByCourse.get(course) === true;
                       const span = hide3 ? 2 : 3;
@@ -596,6 +625,7 @@ export default function StudentsScoresPage() {
           </div>
         </div>
       </div>
+      
       {/* Upload modal */}
       {uploadOpen && (
         <div
@@ -627,7 +657,13 @@ export default function StudentsScoresPage() {
               <h3 style={{ margin: 0, fontSize: 18 }}>Upload scores (.xlsm)</h3>
               <button
                 onClick={() => setUploadOpen(false)}
-                className="border px-2 py-1 rounded"
+                style={{
+                  padding: "4px 12px",
+                  borderRadius: "4px",
+                  border: "1px solid #ddd",
+                  background: "white",
+                  cursor: "pointer",
+                }}
                 aria-label="Close upload"
               >
                 Close
@@ -661,15 +697,27 @@ export default function StudentsScoresPage() {
 
               <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end", gap: 8 }}>
                 <button
-                  className="border px-3 py-1 rounded"
+                  style={{
+                    padding: "4px 12px",
+                    borderRadius: "4px",
+                    border: "1px solid #ddd",
+                    background: "white",
+                    cursor: "pointer",
+                  }}
                   onClick={() => { setUploadOpen(false); setSelectedFile(null); setUploadError(""); }}
                 >
                   Cancel
                 </button>
                 <button
-                  className="border px-3 py-1 rounded"
+                  style={{
+                    padding: "4px 12px",
+                    borderRadius: "4px",
+                    border: "1px solid #0d6efd",
+                    background: "#0d6efd",
+                    color: "white",
+                    cursor: "pointer",
+                  }}
                   onClick={handleUploadSubmit}
-                  style={{ background: "#0d6efd", color: "white", borderColor: "#0d6efd" }}
                 >
                   Import
                 </button>

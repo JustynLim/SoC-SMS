@@ -75,6 +75,37 @@ def process_student_datasheet(file_path, sheet_info, output_folder):
         valid_rows_student = valid_rows[2:] & student_data.notna().any(axis=1)
         student_df = student_data[valid_rows_student].copy()
 
+        # Extract 'Grad' column dynamically from the full DataFrame
+        grad_col_name = None
+        for col in df.columns:
+            if str(col).strip().upper() == 'GRAD':
+                grad_col_name = col
+                break
+
+        if grad_col_name is not None:
+            try:
+                # Get the column index
+                grad_idx = df.columns.get_loc(grad_col_name)
+                
+                # Extract values from row 2 onward (matching student data range)
+                grad_raw = df.iloc[2:, grad_idx].copy()
+                
+                # Apply the same valid_rows filter as student_df
+                grad_filtered = grad_raw[valid_rows_student.values].reset_index(drop=True)
+                
+                # Add to student_df (ensure both are reset-indexed for alignment)
+                student_df = student_df.reset_index(drop=True)
+                student_df['Grad'] = grad_filtered.apply(
+                    lambda x: str(x).strip() if pd.notna(x) and str(x).strip() not in ['', 'nan', 'None'] else '-'
+                )
+                print(f"✅ Extracted {(student_df['Grad'] != '-').sum()} Grad values from {sheet_name}")
+            except Exception as e:
+                print(f"⚠️ Error extracting Grad column: {e}, defaulting to '-'")
+                student_df['Grad'] = '-'
+        else:
+            student_df['Grad'] = '-'
+            print(f"⚠️ 'Grad' column not found in {sheet_name}, setting all GRADUATED_ON to '-'")
+
         if 'Cohort' in student_df.columns:
             try:
                 student_df['Cohort'] = pd.to_datetime(student_df['Cohort']).dt.strftime('%d/%m/%Y')
@@ -170,13 +201,10 @@ def process_student_datasheet(file_path, sheet_info, output_folder):
         # -------------------------------
         # Fill '-' in all blank score cells (attempts and single-attempt columns)
         # -------------------------------
-        import re
-
         def is_attempt_col(col: str) -> bool:
             return re.fullmatch(r".+_Attempt\d+", str(col)) is not None
 
         course_like = re.compile(r"^[A-Za-z0-9][A-Za-z0-9\-_]{2,}$")
-
         attempt_cols = [c for c in score_df.columns if is_attempt_col(c)]
         single_cols = [c for c in score_df.columns
                        if c != "Matric_No" and c not in attempt_cols and course_like.fullmatch(str(c) or "")]
@@ -512,15 +540,6 @@ def import_student_info(csv_file_path='Active_Student.csv'):
         raise ValueError(f"Unable to determine student status from filename: {csv_file_path}")
     
     try:
-        # Establish database connection
-        # conn = pyodbc.connect(
-        #     'DRIVER={ODBC Driver 17 for SQL Server};'
-        #     f'SERVER={os.getenv("MSSQL_SERVER")};'
-        #     f'DATABASE={os.getenv("MSSQL_DATABASE")};'
-        #     f'UID={os.getenv("MSSQL_USERNAME")};'
-        #     f'PWD={os.getenv("MSSQL_PASSWORD")}'
-        # )
-        # logging.info("Successfully connected to MSSQL database")
         conn = get_db_connection()
         
         # Read and prepare CSV data
@@ -538,7 +557,8 @@ def import_student_info(csv_file_path='Active_Student.csv'):
             'BM': 'BM',
             'English': 'ENGLISH',
             'Entry-Q': 'ENTRY_Q',
-            'Matric No': 'MATRIC_NO'
+            'Matric No': 'MATRIC_NO',
+            'Grad': 'GRADUATED_ON'
         })
         
         # Convert date format (handle errors)
@@ -548,10 +568,18 @@ def import_student_info(csv_file_path='Active_Student.csv'):
         # Clean phone numbers before import
         df['MOBILE_NO'] = df['MOBILE_NO'].apply(clean_phone_number)
 
+        # Ensure GRADUATED_ON defaults to '-' if missing or blank
+        if 'GRADUATED_ON' not in df.columns:
+            df['GRADUATED_ON'] = '-'
+        else:
+            df['GRADUATED_ON'] = df['GRADUATED_ON'].apply(
+                lambda x: str(x).strip() if pd.notna(x) and str(x).strip() != '' else '-'
+            )
+
         update_query = """
         UPDATE STUDENTS SET
             STUDENT_NAME=?, COHORT=?, SEM=?, CU_ID=?, IC_NO=?, 
-            MOBILE_NO=?, EMAIL=?, BM=?, ENGLISH=?, ENTRY_Q=?, STUDENT_STATUS=?
+            MOBILE_NO=?, EMAIL=?, BM=?, ENGLISH=?, ENTRY_Q=?, STUDENT_STATUS=?, GRADUATED_ON=?
         WHERE MATRIC_NO=?
         """
 
@@ -559,8 +587,8 @@ def import_student_info(csv_file_path='Active_Student.csv'):
         INSERT INTO STUDENTS (
             STUDENT_NAME, COHORT, SEM, CU_ID, IC_NO, 
             MOBILE_NO, EMAIL, BM, ENGLISH, ENTRY_Q, 
-            MATRIC_NO, STUDENT_STATUS
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            MATRIC_NO, STUDENT_STATUS, GRADUATED_ON
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         
         # Process each row
@@ -582,14 +610,43 @@ def import_student_info(csv_file_path='Active_Student.csv'):
                         row['ENTRY_Q'] if pd.notna(row['ENTRY_Q']) else None,
                     ]
                     matric_no = str(row['MATRIC_NO']) if pd.notna(row['MATRIC_NO']) else None
+                    graduated_on = row['GRADUATED_ON']
 
-                    # Try update first
-                    cursor.execute(update_query, values_common + [student_status, matric_no])
-                    if cursor.rowcount > 0:
-                        update_count += 1
+                    # Check if record exists and get current values
+                    cursor.execute("""
+                        SELECT STUDENT_NAME, COHORT, SEM, CU_ID, IC_NO, MOBILE_NO, 
+                            EMAIL, BM, ENGLISH, ENTRY_Q, STUDENT_STATUS, GRADUATED_ON
+                        FROM STUDENTS 
+                        WHERE MATRIC_NO = ?
+                    """, (matric_no,))
+                    
+                    existing = cursor.fetchone()
+
+                    if existing:
+                        # Compare current values with new values
+                        new_values = values_common + [student_status, graduated_on]
+                        existing_values = list(existing)
+                        
+                        # Check if any value has changed (handle None comparisons)
+                        has_changes = False
+                        for old_val, new_val in zip(existing_values, new_values):
+                            # Normalize None and empty string comparisons
+                            old_normalized = str(old_val).strip() if old_val is not None else ""
+                            new_normalized = str(new_val).strip() if new_val is not None else ""
+                            if old_normalized != new_normalized:
+                                has_changes = True
+                                break
+                        
+                        if has_changes:
+                            # Only update if there are actual changes
+                            cursor.execute(update_query, values_common + [student_status, graduated_on, matric_no])
+                            update_count += 1
+                        # else: skip, no changes needed
                     else:
-                        cursor.execute(insert_query, values_common + [matric_no, student_status])
+                        # Record doesn't exist, insert it
+                        cursor.execute(insert_query, values_common + [matric_no, student_status, graduated_on])
                         insert_count += 1
+                        
                 except Exception as row_ex:
                     error_count += 1
                     logging.warning(f"Error processing row {idx + 2}: {str(row_ex)}")
@@ -612,19 +669,12 @@ def import_student_scores(csv_file_path):
     insert_count = 0
     update_count = 0
     error_count = 0
+    skip_count = 0
 
     try:
-        # Get all existing matrics first
-        # conn = pyodbc.connect(
-        #     'DRIVER={ODBC Driver 17 for SQL Server};'
-        #     f'SERVER={os.getenv("MSSQL_SERVER")};'
-        #     f'DATABASE={os.getenv("MSSQL_DATABASE")};'
-        #     f'UID={os.getenv("MSSQL_USERNAME")};'
-        #     f'PWD={os.getenv("MSSQL_PASSWORD")}'
-        # )
-        # logging.info("Successfully connected to MSSQL database")
         conn = get_db_connection()
         cursor = conn.cursor()
+        
         cursor.execute("SELECT MATRIC_NO FROM STUDENTS")
         db_matrics = {row.MATRIC_NO for row in cursor.fetchall()}
         
@@ -642,14 +692,14 @@ def import_student_scores(csv_file_path):
                 print(f"- {matric}")
             
             # Create report
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S") # Use this for when updating scores using marksheet
             report_path = f"missing_matrics_{timestamp}.csv"
             pd.DataFrame(sorted(missing_matrics), columns=['MATRIC_NO']).to_csv(report_path, index=False)
             
             print(f"\n💾 Full list of {len(missing_matrics)} missing matrics saved to:")
             print(f"📄 {report_path}")
             
-            return 0, len(missing_matrics)  # Abort import
+            return 0, 0, len(missing_matrics)  # Abort import
 
         # Read CSV with first column as matric_no
         df = pd.read_csv(csv_file_path, index_col=0, skiprows=lambda x: x == 1)
@@ -721,18 +771,44 @@ def import_student_scores(csv_file_path):
         with conn.cursor() as cursor:
             for record in records:
                 try:
-                    # Try update first
-                    cursor.execute(update_query,
-                        record['ATTEMPT_1'],
-                        record['ATTEMPT_2'],
-                        record['ATTEMPT_3'],
-                        record['MATRIC_NO'],
-                        record['COURSE_CODE']
-                    )
-
-                    if cursor.rowcount > 0:
-                        update_count += 1
+                    # Check if record exists and get current values
+                    cursor.execute("""
+                        SELECT ATTEMPT_1, ATTEMPT_2, ATTEMPT_3
+                        FROM STUDENT_SCORE 
+                        WHERE MATRIC_NO = ? AND COURSE_CODE = ?
+                    """, (record['MATRIC_NO'], record['COURSE_CODE']))
+                    
+                    existing = cursor.fetchone()
+                    
+                    if existing:
+                        # Compare current values with new values
+                        new_values = [record['ATTEMPT_1'], record['ATTEMPT_2'], record['ATTEMPT_3']]
+                        existing_values = list(existing)
+                        
+                        # Check if any value has changed
+                        has_changes = False
+                        for old_val, new_val in zip(existing_values, new_values):
+                            # Normalize None and empty string comparisons
+                            old_normalized = str(old_val).strip() if old_val is not None else ""
+                            new_normalized = str(new_val).strip() if new_val is not None else ""
+                            if old_normalized != new_normalized:
+                                has_changes = True
+                                break
+                        
+                        if has_changes:
+                            # Only update if there are actual changes
+                            cursor.execute(update_query,
+                                record['ATTEMPT_1'],
+                                record['ATTEMPT_2'],
+                                record['ATTEMPT_3'],
+                                record['MATRIC_NO'],
+                                record['COURSE_CODE']
+                            )
+                            update_count += 1
+                        else:
+                            skip_count += 1
                     else:
+                        # Record doesn't exist, insert it
                         cursor.execute(insert_query,
                             record['MATRIC_NO'],
                             record['COURSE_CODE'],
@@ -747,6 +823,10 @@ def import_student_scores(csv_file_path):
                     logging.warning(f"Error on {record['MATRIC_NO']} {record['COURSE_CODE']}: {str(e)}")
 
             conn.commit()
+
+        # Optional: log skip count
+        if skip_count > 0:
+            logging.info(f"Skipped {skip_count} records with no changes")
 
     except Exception as e:
         logging.error(f"Import failed: {str(e)}")
@@ -811,6 +891,28 @@ def import_marksheet(xlsm_path: str, batch_size: int = 200):
     skipped = 0
     processed_sheets = 0
 
+    # Generate timestamp for UPDATED_AT
+    import_timestamp = datetime.now()
+
+    # Mapping to prevent SQL injection
+    ATTEMPT_UPDATES = {
+        "ATTEMPT_1": """
+            UPDATE dbo.STUDENT_SCORE
+            SET ATTEMPT_1 = ?, LAST_UPDATED = ?
+            WHERE MATRIC_NO = ? AND COURSE_CODE = ?
+        """,
+        "ATTEMPT_2": """
+            UPDATE dbo.STUDENT_SCORE
+            SET ATTEMPT_2 = ?, LAST_UPDATED = ?
+            WHERE MATRIC_NO = ? AND COURSE_CODE = ?
+        """,
+        "ATTEMPT_3": """
+            UPDATE dbo.STUDENT_SCORE
+            SET ATTEMPT_3 = ?, LAST_UPDATED = ?
+            WHERE MATRIC_NO = ? AND COURSE_CODE = ?
+        """
+    }
+
     try:
         # Discover sheet names then close handle immediately
         wb = pd.ExcelFile(xlsm_path, engine="openpyxl")
@@ -831,9 +933,10 @@ def import_marksheet(xlsm_path: str, batch_size: int = 200):
         logging.debug("Connected to DB for import_marksheet")
 
         # Precompiled queries
-        q_get_matric = """
-          SELECT MATRIC_NO FROM STUDENTS WHERE TRY_CONVERT(INT, CU_ID) = ?
-        """
+        # q_get_matric = """
+        #   SELECT MATRIC_NO FROM STUDENTS WHERE TRY_CONVERT(INT, CU_ID) = ?
+        # """
+        q_get_matric = "SELECT MATRIC_NO FROM STUDENTS WHERE TRY_CONVERT(INT, CU_ID) = ?"
         q_get_row = """
           SELECT s.SCORE_ID, s.ATTEMPT_1, s.ATTEMPT_2, s.ATTEMPT_3,
                  s.A1_UPDATED_AT, s.A2_UPDATED_AT, s.A3_UPDATED_AT,
@@ -842,13 +945,13 @@ def import_marksheet(xlsm_path: str, batch_size: int = 200):
           LEFT JOIN dbo.COURSE_STRUCTURE cs ON cs.COURSE_CODE = s.COURSE_CODE
           WHERE s.MATRIC_NO = ? AND s.COURSE_CODE = ?
         """
-        q_update_attempt = lambda col: f"""
-          UPDATE dbo.STUDENT_SCORE
-             SET {col} = ?
-           WHERE MATRIC_NO = ? AND COURSE_CODE = ?
-        """
+        # q_update_attempt = lambda col: f"""
+        #   UPDATE dbo.STUDENT_SCORE
+        #      SET {col} = ?, LAST_UPDATED = ?
+        #    WHERE MATRIC_NO = ? AND COURSE_CODE = ?
+        # """
 
-        processed_sheets = 0
+        # processed_sheets = 0
 
         for sheet_name in matching:
             m = COURSE_SHEET_RE.match(sheet_name)
@@ -946,11 +1049,17 @@ def import_marksheet(xlsm_path: str, batch_size: int = 200):
                         skipped += 1
                         continue
 
-                # Update with resolved_code
-                cur.execute(q_update_attempt(target), (score_val, matric_no, resolved_code))
-                updated += 1
-                if updated % batch_size == 0:
-                    conn.commit()
+            # Validate target before using
+            if target not in ATTEMPT_UPDATES:
+                logging.error(f"Invalid target column: {target}")
+                skipped += 1
+                continue
+
+            # Update with resolved_code using pre-defined query from dict
+            cur.execute(ATTEMPT_UPDATES[target], (score_val, import_timestamp, matric_no, resolved_code))
+            updated += 1
+            if updated % batch_size == 0:
+                conn.commit()
 
             processed_sheets += 1
             logging.info("[INGEST] Sheet %s processed. cumulative updated=%d skipped=%d",

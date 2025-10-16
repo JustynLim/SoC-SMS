@@ -1,12 +1,14 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { MdDeleteOutline, MdOutlineEdit, MdOutlineCancel, MdOutlineSaveAs } from "react-icons/md";
 
 
 // This component is solely for the action col to edit and delete student records
 
-export default function StudentRow({ student, columns, shouldCenter, onUpdate, onDelete }) {
+export default function StudentRow({ student, columns, shouldCenter, onUpdate, onDelete, highlight }) {
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState({ ...student });
+  const navigate = useNavigate();
 
   const handleChange = (e, col) => {
     setFormData({
@@ -25,19 +27,49 @@ export default function StudentRow({ student, columns, shouldCenter, onUpdate, o
     setEditMode(false);
   };
 
+  const handleNameClick = () => {
+    navigate(`/students-info/${student.MATRIC_NO}`);
+  };
+
   return (
     <tr>
       {columns.map((col, colIndex) => {
         const value = formData[col] ?? "-";
         const isLastCol = colIndex === columns.length - 1;
+        const isNameColumn = col === "STUDENT_NAME";
+        
+        // Apply highlight to name if search is active
+        const displayValue = isNameColumn && highlight && !editMode
+          ? highlight(value)
+          : col === "COHORT" && value !== "-" && !editMode
+          ? new Date(value).getFullYear()
+          : value;
+        
         return (
           <td
             key={col}
             style={{
               textAlign: value === "-" ? "center" : shouldCenter(col) ? "center" : "left",
               padding: "8px 10px",
-              borderRight: isLastCol ? "none" : "1px solid #ddd",
-              whiteSpace: "nowrap", // added this
+              borderRight: "1px solid #eee", // Always show border
+              borderBottom: "1px solid #eee", // Add consistent bottom border              
+              //borderRight: isLastCol ? "none" : "1px solid #ddd",
+              whiteSpace: "nowrap",
+              cursor: isNameColumn && !editMode ? "pointer" : "default",
+              color: isNameColumn && !editMode ? "#007bff" : "inherit",
+              // Add extra padding for last visible column
+              paddingRight: isLastCol ? "24px" : "10px",
+            }}
+            onClick={isNameColumn && !editMode ? handleNameClick : undefined}
+            onMouseEnter={(e) => {
+              if (isNameColumn && !editMode) {
+                e.target.style.textDecoration = "underline";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (isNameColumn && !editMode) {
+                e.target.style.textDecoration = "none";
+              }
             }}
           >
             {editMode ? (
@@ -56,27 +88,26 @@ export default function StudentRow({ student, columns, shouldCenter, onUpdate, o
                   style={{ width: "100%", padding: "4px" }}
                 />
               )
-            ) : col === "COHORT" && value !== "-" ? (
-              // Display only year in view mode
-              new Date(value).getFullYear()
             ) : (
-              value
+              displayValue
             )}
-        </td>
-      );
-    })}
+          </td>
+        );
+      })}
 
       {/* Actions buttons */}
       <td
         style={{
-          position: "sticky", //
-          right: 0, //
-          background: "#fff", //
-          zIndex: 5, //
+          position: "sticky",
+          right: 0,
+          background: "#fff",
+          zIndex: 5,
           textAlign: "center",
           padding: "8px 10px",
-          borderLeft: "1px solid #ddd",
-          whiteSpace: "nowrap", //
+          borderLeft: "2px solid #ddd", // Thicker left border to match header
+          borderBottom: "1px solid #eee", // Add bottom border
+          //borderLeft: "1px solid #ddd",
+          whiteSpace: "nowrap",
         }}
       >
         <div style={{ display: "flex", justifyContent: "center", gap: "8px"}}>

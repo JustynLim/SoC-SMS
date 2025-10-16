@@ -1,11 +1,12 @@
 from cryptography.fernet import Fernet
 from src.services.data_processing import decrypt_ic, encrypt_ic, import_marksheet, import_student_data ,import_course_structure, process_student_datasheet, process_course_str
 from src.db.core import get_db_connection
+from src.services.predictions import prediction_bp # Blueprint for predictive model
 from flask import current_app,Flask, jsonify, render_template, Response, request
 from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required, JWTManager, set_access_cookies
 import base64,datetime,hashlib,logging,os,pdfkit,pyodbc,pyotp,re,socket,tempfile,uuid
 #from contextlib import closing
-from datetime import datetime, timedelta
+from datetime import date,datetime, timedelta
 from dotenv import load_dotenv, set_key
 from flask_cors import CORS, cross_origin
 from pdfkit.configuration import Configuration
@@ -105,6 +106,9 @@ jwt = JWTManager(app)
 upload_folder = "uploads"
 os.makedirs(upload_folder, exist_ok=True)
 
+# Register prediction routes
+app.register_blueprint(prediction_bp)
+
 # def find_free_port():
 #     with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
 #         s.bind(('', 0))
@@ -199,9 +203,11 @@ def fetch_mentorship_list(session: str):
             FROM STUDENT_SCORE AS SS
             WHERE
 
-            (UPPER(LTRIM(RTRIM(SS.ATTEMPT_1))) = ?
-                OR UPPER(LTRIM(RTRIM(SS.ATTEMPT_2))) = ?
-                OR UPPER(LTRIM(RTRIM(SS.ATTEMPT_3))) = ?)
+                ? IN (
+                    UPPER(LTRIM(RTRIM(SS.ATTEMPT_1))),
+                    UPPER(LTRIM(RTRIM(SS.ATTEMPT_2))),
+                    UPPER(LTRIM(RTRIM(SS.ATTEMPT_3)))
+                   )
 
             AND ISNULL(TRY_CAST(SS.ATTEMPT_1 AS FLOAT), 0) < 40
             AND ISNULL(TRY_CAST(SS.ATTEMPT_2 AS FLOAT), 0) < 40
@@ -224,7 +230,7 @@ def fetch_mentorship_list(session: str):
             S.STUDENT_NAME, S.MATRIC_NO, S.IC_NO, S.MOBILE_NO, S.EMAIL
         ORDER BY
             S.STUDENT_NAME ASC, S.MATRIC_NO ASC
-    """, (session, session, session))
+    """, (session))
 
     cols = [c[0] for c in cursor.description]
     rows = cursor.fetchall()
@@ -244,8 +250,271 @@ def fetch_mentorship_list(session: str):
     conn.close()
     return data
 
+def convert_course_version_to_date(raw) -> date:
+    if isinstance(raw, date) and not isinstance(raw, datetime):
+        return raw
+    if isinstance(raw, datetime):
+        return raw.date()
+    s = str(raw or "").strip()
+
+    # Try ISO YYYY-MM-DD
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except ValueError:
+        pass
+    # Try RFC1123: 'Thu, 01 Apr 2021 00:00:00 GMT'
+    try:
+        return datetime.strptime(s, "%a, %d %b %Y %H:%M:%S %Z").date()
+    except ValueError:
+        pass
+
+    raise ValueError(f"COURSE_VERSION must be a date (got: {s})")
+
 # Set up logging (you can configure the level and format as per your needs)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+
+def insert_new_student_scores(matric_no: str, course_version: str) -> tuple[int, int]:
+    """
+    Inserts one STUDENT_SCORE row per course in the given version.
+    Returns (inserted_count, skipped_count).
+    Skips duplicates safely if UC_Student_Course already has a row.
+    """
+    inserted = 0
+    skipped = 0
+    conn = None
+
+    try:
+        course_version_date = convert_course_version_to_date(course_version)
+
+    except ValueError as ve:
+        raise
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Fetch course list for version
+        cur.execute(
+            """
+            SELECT COURSE_CODE, COURSE_CLASSIFICATION
+            FROM COURSE_STRUCTURE
+            WHERE COURSE_VERSION = ?
+            """,
+            (course_version_date,)
+        )
+        courses = cur.fetchall()
+
+        if not courses:
+            cur.close()
+            conn.close()
+            return (0, 0)
+
+        insert_sql = """
+        INSERT INTO STUDENT_SCORE (
+            MATRIC_NO, COURSE_CODE, ATTEMPT_1, ATTEMPT_2, ATTEMPT_3,
+            A1_UPDATED_AT, A2_UPDATED_AT, A3_UPDATED_AT
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """
+
+        today = date.today()
+
+        for course_code, classification in courses:
+            is_mpu = bool(classification) and str(classification).upper().startswith("MPU")
+            if is_mpu:
+                params = (matric_no, course_code, "-", "-", "N/A", None, None, today) # None = null value for a{n}_updated_at
+            else:
+                params = (matric_no, course_code, "-", "-", "-", None, None, None)
+
+            try:
+                cur.execute(insert_sql, params)
+                inserted += 1
+            except Exception as ex:
+                # If duplicate due to UC_Student_Course, skip; else re-raise
+                # SQLState 23000-ish: unique constraint. For portability, re-check existence.
+                cur.execute(
+                    "SELECT 1 FROM STUDENT_SCORE WHERE MATRIC_NO=? AND COURSE_CODE=?",
+                    (matric_no, course_code)
+                )
+                if cur.fetchone():
+                    skipped += 1
+                else:
+                    raise
+
+        conn.commit()
+        cur.close()
+        conn.close()
+        return (inserted, skipped)
+    except Exception:
+        if conn:
+            conn.rollback()
+            try:
+                cur.close()
+            except Exception:
+                pass
+            conn.close()
+        raise
+
+
+# I will slap perplexity if the new function doesnt work
+@app.route('/api/add-student', methods=['POST'])
+def add_student():
+    conn = None
+    try:
+        data = request.json or {}
+
+        required = ["STUDENT_NAME", "COHORT", "SEM", "CU_ID", "IC_NO", "MATRIC_NO", "COURSE_VERSION"]
+        missing = [f for f in required if not str(data.get(f) or "").strip()]
+        if missing:
+            return jsonify({"error": f"Missing required fields: {', '.join(missing)}"}), 400
+
+        student_name = str(data["STUDENT_NAME"]).strip()
+
+        raw_cohort = data["COHORT"]
+        if isinstance(raw_cohort, str):
+            try:
+                cohort_date = datetime.strptime(raw_cohort.strip(), "%Y-%m-%d").date()
+
+            except ValueError:
+                return jsonify({"error": "COHORT must be YYYY-MM-DD"}), 400
+        elif isinstance(raw_cohort, date):
+            cohort_date = raw_cohort
+        else:
+            return jsonify({"error": "COHORT must be a date string 'YYYY-MM-DD'"}), 400
+
+        sem_str = str(data["SEM"]).strip()
+
+        try:
+            cu_id_int = int(str(data["CU_ID"]).strip())
+        except ValueError:
+            return jsonify({"error": "CU_ID must be an integer"}), 400
+
+        ic_enc = encrypt_ic(str(data["IC_NO"]).strip())
+
+        mobile = (data.get("MOBILE_NO") or "-").strip()
+        email = (data.get("EMAIL") or "-").strip()
+        bm = (data.get("BM") or "-").strip()
+        english = (data.get("ENGLISH") or "-").strip()
+        entry_q = (data.get("ENTRY_Q") or "-").strip()
+
+        matric_no = str(data["MATRIC_NO"]).strip()
+        student_status = "Active"
+        course_version = str(data.get("COURSE_VERSION") or "").strip()
+        # GRADUATED_ON omitted to use table DEFAULT('-')
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT 1 FROM STUDENTS WHERE MATRIC_NO = ?", (matric_no,))
+        if cursor.fetchone():
+            return jsonify({"error": "Matric number already exists"}), 400
+
+        insert_student_query = """
+        INSERT INTO STUDENTS (
+          STUDENT_NAME, COHORT, SEM, CU_ID, IC_NO,
+          MOBILE_NO, EMAIL, BM, ENGLISH, ENTRY_Q,
+          MATRIC_NO, STUDENT_STATUS
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+
+        print("ADD-STUDENT PARAMS:", dict(
+            STUDENT_NAME=student_name,
+            COHORT_ISO=cohort_date.isoformat(),
+            SEM=sem_str,
+            CU_ID=cu_id_int,
+            IC_NO_len=len(ic_enc),
+            MOBILE_NO=mobile,
+            EMAIL=email,
+            BM=bm,
+            ENGLISH=english,
+            ENTRY_Q=entry_q,
+            MATRIC_NO=matric_no,
+            STUDENT_STATUS=student_status
+        ))
+
+        cursor.execute(
+            insert_student_query,
+            (
+                student_name,        # nvarchar
+                cohort_date,         # bind as Python date
+                sem_str,             # varchar(2)
+                cu_id_int,           # int
+                ic_enc,              # varchar(200)
+                mobile,              # varchar(20)
+                email,               # nvarchar(100)
+                bm,                  # nvarchar(100)
+                english,             # nvarchar(100)
+                entry_q,             # nvarchar(100)
+                matric_no,           # varchar(20)
+                student_status       # varchar(8)
+            )
+        )
+
+        try:
+            course_version_date = convert_course_version_to_date(course_version)  # returns a Python date
+        except ValueError as ve:
+            conn.rollback()
+            cursor.close()
+            conn.close()
+            return jsonify({"error": str(ve)}), 400
+
+        cursor.execute(
+            """
+            SELECT COURSE_CODE, COURSE_CLASSIFICATION
+            FROM COURSE_STRUCTURE
+            WHERE COURSE_VERSION = ?
+            """,
+            (course_version_date,)  # bind a date, not a string
+        )
+        courses = cursor.fetchall()
+        if not courses:
+            conn.rollback()
+            cursor.close()
+            conn.close()
+            return jsonify({"error": f"No courses found for version: {course_version}"}), 400
+
+        # Seed scores
+        insert_score_query = """
+        INSERT INTO STUDENT_SCORE (
+            MATRIC_NO, COURSE_CODE, ATTEMPT_1, ATTEMPT_2, ATTEMPT_3,
+            A1_UPDATED_AT, A2_UPDATED_AT, A3_UPDATED_AT
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        today = date.today()
+
+        for course_code, classification in courses:
+            is_mpu = bool(classification) and str(classification).upper().startswith("MPU")
+            if is_mpu:
+                params = (matric_no, course_code, "-", "-", "N/A", None, None, today)
+            else:
+                params = (matric_no, course_code, "-", "-", "-", None, None, None)
+            cursor.execute(insert_score_query, params)
+
+        # Now commit everything together
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+
+        return jsonify({"message": f"Student {student_name} added successfully with {len(courses)} courses"}), 201
+
+    except Exception as e:
+        logging.error(f"Failed to add student: {str(e)}")
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            try:
+                if cursor:
+                    cursor.close()
+            except Exception:
+                pass
+            try:
+                conn.close()
+            except Exception:
+                pass
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/api/cohorts', methods=['GET'])
 def list_cohorts():
@@ -357,6 +626,20 @@ def get_course_structure():
         return jsonify(data), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/course-versions', methods=['GET'])
+def get_course_versions():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT COURSE_VERSION FROM COURSE_STRUCTURE ORDER BY COURSE_VERSION DESC")
+        versions = [row[0] for row in cursor.fetchall()]
+        cursor.close()
+        conn.close()
+        return jsonify({"versions": versions}), 200
+    except Exception as e:
+        logging.error(f"Failed to fetch course versions: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/course-structure/options', methods=['GET'])
 def course_structure_options():
@@ -485,6 +768,31 @@ def generate_mentorship_list_pdf():
         current_app.logger.exception("Mentorship PDF generation failed")
         return jsonify({'error': str(e)}), 500
 
+# @app.route('/api/students', methods=['GET'])
+# def get_students():
+#     matric_no = request.args.get('matric_no')
+    
+#     conn = get_db_connection()
+#     cursor = conn.cursor()
+    
+#     if matric_no:
+#         # Fetch single student by MATRIC_NO
+#         query = "SELECT * FROM STUDENTS WHERE MATRIC_NO = ?"
+#         cursor.execute(query, (matric_no,))
+#     else:
+#         # Fetch all students
+#         query = "SELECT * FROM STUDENTS ORDER BY STUDENT_NAME"
+#         cursor.execute(query)
+    
+#     columns = [column[0] for column in cursor.description]
+#     results = cursor.fetchall()
+    
+#     students = [dict(zip(columns, row)) for row in results]
+    
+#     cursor.close()
+#     conn.close()
+    
+#     return jsonify(students)
 
 @app.route('/api/student-score/sessions/mentorship', methods=['GET'])
 def student_score_mentorship_sessions():
@@ -494,18 +802,19 @@ def student_score_mentorship_sessions():
 
         # Union of distinct R-prefixed values from all three attempts, no course filter
         cursor.execute("""
-            SELECT DISTINCT ATTEMPT_1 AS v
+            SELECT DISTINCT UPPER(LTRIM(RTRIM(ATTEMPT_1))) AS v
               FROM STUDENT_SCORE
              WHERE LEFT(UPPER(LTRIM(RTRIM(ATTEMPT_1))), 1) = 'R'
             UNION
-            SELECT DISTINCT ATTEMPT_2 AS v
+            SELECT DISTINCT UPPER(LTRIM(RTRIM(ATTEMPT_2))) AS v
               FROM STUDENT_SCORE
              WHERE LEFT(UPPER(LTRIM(RTRIM(ATTEMPT_2))), 1) = 'R'
             UNION
-            SELECT DISTINCT ATTEMPT_3 AS v
+            SELECT DISTINCT UPPER(LTRIM(RTRIM(ATTEMPT_3))) AS v
               FROM STUDENT_SCORE
              WHERE LEFT(UPPER(LTRIM(RTRIM(ATTEMPT_3))), 1) = 'R'
         """)
+        # Searching for 'r' in attempt for MPU courses as older score gets overwritten after exceeding 2 attempts
 
         rows = cursor.fetchall()
         values = [r[0] for r in rows if isinstance(r[0], str) and r[0].strip()]
@@ -515,7 +824,6 @@ def student_score_mentorship_sessions():
         return jsonify(values), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
 
 @app.route('/api/student-score/sessions/internship', methods=['GET'])
 def student_score_internship_sessions():
