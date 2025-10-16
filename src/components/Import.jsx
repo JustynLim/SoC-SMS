@@ -13,7 +13,7 @@ const Import = () => {
   const [courseVersionDate, setCourseVersionDate] = useState(null);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [progress, setProgress] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
 
   const messageClass = `${messageType}-message`;
@@ -22,7 +22,7 @@ const Import = () => {
 
   const handleFileSelect = (selectedFile) => {
     setFile(selectedFile);
-    setUploadProgress(0);
+    setProgress(0);
     setMessage("");
     setIsProcessing(false);
   };
@@ -70,7 +70,7 @@ const Import = () => {
     }
 
     try {
-      setUploadProgress(0);
+      setProgress(0);
       setIsProcessing(false);
       setMessage("");
 
@@ -81,16 +81,18 @@ const Import = () => {
         },
         onUploadProgress: (progressEvent) => {
           const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          setUploadProgress(percentCompleted);
+          setProgress(Math.round(percentCompleted / 2));
           if (percentCompleted === 100) {
             setIsProcessing(true);
           }
         },
       });
 
+      setProgress(100);
       setMessage(res.data.message);
       setMessageType("success");
     } catch (err) {
+      setProgress(0);
       if (err.response && err.response.status === 401) {
         setMessage("Session expired, please log in again");
         setMessageType("error");
@@ -110,7 +112,7 @@ const Import = () => {
       <h2 className="text-xl font-semibold mb-4">Import Excel</h2>
 
       <div className="flex flex-col items-center justify-center gap-4 w-full mb-4">
-        <FileUpload onFileSelect={handleFileSelect} progress={uploadProgress} />
+        <FileUpload onFileSelect={handleFileSelect} progress={progress} />
 
         <div className="flex items-center justify-center gap-4 w-full mt-4">
           <select
@@ -155,9 +157,9 @@ const Import = () => {
           <button
             onClick={handleUpload}
             className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-            disabled={!file || (uploadProgress > 0 && uploadProgress < 100) || isProcessing}
+            disabled={!file || (progress > 0 && progress < 100) || isProcessing}
           >
-            {isProcessing ? 'Processing...' : (uploadProgress > 0 && uploadProgress < 100 ? `Uploading... ${uploadProgress}%` : 'Upload & Process')}
+            {isProcessing ? 'Processing...' : (progress > 0 && progress < 50 ? 'Uploading...' : 'Upload & Process')}
           </button>
         </div>
       </div>
