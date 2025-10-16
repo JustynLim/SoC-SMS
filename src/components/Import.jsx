@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
-import {DatePicker} from "@mui/x-date-pickers/DatePicker";
-import {LocalizationProvider} from '@mui/x-date-pickers/LocalizationProvider'
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import axios from 'axios';
+import FileUpload from './FileUpload';
 import '../App.css';
-
 
 const Import = () => {
   const [file, setFile] = useState(null);
@@ -12,10 +13,19 @@ const Import = () => {
   const [courseVersionDate, setCourseVersionDate] = useState(null);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const messageClass = `${messageType}-message`
+  const messageClass = `${messageType}-message`;
   const sheetOptions = ["Active", "Graduate", "Withdraw", "Course Structure"];
   const showVariantPicker = selectedSheet === "Course Structure";
+
+  const handleFileSelect = (selectedFile) => {
+    setFile(selectedFile);
+    setUploadProgress(0);
+    setMessage("");
+    setIsProcessing(false);
+  };
 
   const handleUpload = async () => {
     if (!file || !selectedSheet) {
@@ -24,76 +34,74 @@ const Import = () => {
       return;
     }
 
-    if (selectedSheet === "Course Structure" && !selectedVariant){
+    if (selectedSheet === "Course Structure" && !selectedVariant) {
       setMessage("Please select standard/legacy for Course Structure");
       setMessageType("error");
       return;
     }
 
-    if (selectedSheet === "Course Structure" && !courseVersionDate){
+    if (selectedSheet === "Course Structure" && !courseVersionDate) {
       setMessage("Please select Year/Month");
       setMessageType("error");
       return;
     }
 
     const versionStr = courseVersionDate ? courseVersionDate.format('YYYY-MM') : '';
-      { /* error */ }
-      if (selectedSheet === 'Course Structure' && !versionStr){
-        setMessage("Please select Year/Month");
-        setMessageType("error");
-        return;
-      }
+    if (selectedSheet === 'Course Structure' && !versionStr) {
+      setMessage("Please select Year/Month");
+      setMessageType("error");
+      return;
+    }
 
-    const token = localStorage.getItem("token"); // 👈 fetch saved JWT
+    const token = localStorage.getItem("token");
     if (!token) {
       setMessage("You must be logged in to upload files");
       setMessageType("error");
-      // optionally redirect to login page:
       window.location.href = "/login";
       return;
     }
-    
+
     const formData = new FormData();
     formData.append("file", file);
     formData.append("selectedSheet", selectedSheet);
     formData.append("isLegacy", String(selectedVariant === "legacy"));
     if (versionStr) {
-      // align with backend: request.form.get('courseVersionDate')
       formData.append("courseVersionDate", versionStr);
     }
-    
+
     try {
-        const res = await fetch("http://localhost:5001/api/import", {
-          method: "POST",
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("token")}` // 👈 send JWT
-            },
-          body: formData
-        });
-      // const res = await fetch("/api/import", {
-      //   method: "POST",
-      //   body: formData
-      // });
-      
-    if (res.status === 401) {
-      // token invalid/expired
-      setMessage("Session expired, please log in again");
-      setMessageType("error");
-      localStorage.removeItem("token"); // clear bad token
-      window.location.href = "/login";
-      return;
-    }
-      
-      const data = await res.json();
-      if (res.ok) {
-        setMessage(data.message);
-        setMessageType("success")
-      } else {
-        setMessage(data.error || "Processing failed");
-        setMessageType("error")
-      }
+      setUploadProgress(0);
+      setIsProcessing(false);
+      setMessage("");
+
+      const res = await axios.post("http://localhost:5001/api/import", formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        },
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          setUploadProgress(percentCompleted);
+          if (percentCompleted === 100) {
+            setIsProcessing(true);
+          }
+        },
+      });
+
+      setMessage(res.data.message);
+      setMessageType("success");
     } catch (err) {
-      setMessage(`Error: ${err.message}`);
+      if (err.response && err.response.status === 401) {
+        setMessage("Session expired, please log in again");
+        setMessageType("error");
+        localStorage.removeItem("token");
+        window.location.href = "/login";
+      } else {
+        setMessage(err.response?.data?.error || `Error: ${err.message}`);
+        setMessageType("error");
+      }
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -101,62 +109,57 @@ const Import = () => {
     <div className="w-full">
       <h2 className="text-xl font-semibold mb-4">Import Excel</h2>
 
-      <div className="flex items-center justify-between gap-4 w-full mb-4">
-        <input
-          type="file"
-          accept=".xls,.xlsx"
-          onChange={(e) => setFile(e.target.files[0])}
-          className="flex-1 border rounded p-2"
-        />
+      <div className="flex flex-col items-center justify-center gap-4 w-full mb-4">
+        <FileUpload onFileSelect={handleFileSelect} progress={uploadProgress} />
 
-        <select
-          value={selectedSheet}
-          onChange={(e) => setSelectedSheet(e.target.value)}
-          className="border rounded p-2"
-        >
-          <option value="">-- Select Sheet Type --</option>
-          {sheetOptions.map((sheet) => (
-            <option key={sheet} value={sheet}>
-              {sheet}
-            </option>
-          ))}
-        </select>
-
-        {showVariantPicker && (
+        <div className="flex items-center justify-center gap-4 w-full mt-4">
           <select
-            value={selectedVariant}
-            onChange={(e) => setSelectedVariant(e.target.value)}
+            value={selectedSheet}
+            onChange={(e) => setSelectedSheet(e.target.value)}
             className="border rounded p-2"
-            aria-label="Course Structure variant"
           >
-            <option value="">-- Select Variant --</option>
-            <option value="standard">Current</option>
-            <option value="legacy">Legacy</option>
+            <option value="">-- Select Sheet Type --</option>
+            {sheetOptions.map((sheet) => (
+              <option key={sheet} value={sheet}>
+                {sheet}
+              </option>
+            ))}
           </select>
-        )}
 
-        {/* Show month/year picker only when Course Structure is selected */}
-        {selectedSheet === "Course Structure" && (
-          <LocalizationProvider dateAdapter={AdapterDayjs}>
-            <DatePicker
-              views={['year','month']}
-              label="Version (YYYY-MM)"
-              value={courseVersionDate}
-              onChange={(v) => {setCourseVersionDate(v ? v.startOf('month') : null);}}
-              format="YYYY-MM"
-              slotProps={{textField: {size: 'small', className: 'border rounded p-2'} }}
-            />
-          </LocalizationProvider>
-        )}
+          {showVariantPicker && (
+            <select
+              value={selectedVariant}
+              onChange={(e) => setSelectedVariant(e.target.value)}
+              className="border rounded p-2"
+              aria-label="Course Structure variant"
+            >
+              <option value="">-- Select Variant --</option>
+              <option value="standard">Current</option>
+              <option value="legacy">Legacy</option>
+            </select>
+          )}
 
+          {selectedSheet === "Course Structure" && (
+            <LocalizationProvider dateAdapter={AdapterDayjs}>
+              <DatePicker
+                views={['year', 'month']}
+                label="Version (YYYY-MM)"
+                value={courseVersionDate}
+                onChange={(v) => { setCourseVersionDate(v ? v.startOf('month') : null); }}
+                format="YYYY-MM"
+                slotProps={{ textField: { size: 'small', className: 'border rounded p-2' } }}
+              />
+            </LocalizationProvider>
+          )}
 
-
-        <button
-          onClick={handleUpload}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-        >
-          Upload & Process
-        </button>
+          <button
+            onClick={handleUpload}
+            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+            disabled={!file || (uploadProgress > 0 && uploadProgress < 100) || isProcessing}
+          >
+            {isProcessing ? 'Processing...' : (uploadProgress > 0 && uploadProgress < 100 ? `Uploading... ${uploadProgress}%` : 'Upload & Process')}
+          </button>
+        </div>
       </div>
 
       {message && <p className={messageClass}>{message}</p>}

@@ -1,4 +1,25 @@
 import React from "react";
+import {
+  Button,
+  Card,
+  CardContent,
+  CircularProgress,
+  FormControl,
+  Grid,
+  InputLabel,
+  MenuItem,
+  Select,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Typography,
+  Paper,
+  Stack,
+  Box,
+} from "@mui/material";
 
 // Small helpers
 const asArray = (v) => (Array.isArray(v) ? v : []);
@@ -146,7 +167,6 @@ export default function GenerateList() {
     if (next === "internship") {
       // internship: keep current filters or reset
       setSelectedMentorshipSession("");
-      setMentoshipSessionOptions([]);
     } else {
       // mentorship: hide course/session; clear them
       setSelectedCourse("");
@@ -232,179 +252,156 @@ export default function GenerateList() {
   }
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
-      {/* Controls */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr", rowGap: 10 }}>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <label>List type:</label>
-          <select value={listType} onChange={(e) => onChangeListType(e.target.value)} style={{ minWidth: 200 }}>
-            <option value="internship">Internship</option>
-            <option value="mentorship">Mentorship</option>
-          </select>
-        </div>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 2 }}>
+      <Card>
+        <CardContent>
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>List Type</InputLabel>
+                <Select value={listType} label="List Type" onChange={(e) => onChangeListType(e.target.value)}>
+                  <MenuItem value="internship">Internship</MenuItem>
+                  <MenuItem value="mentorship">Mentorship</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
 
-        {isInternship ? (
-          <>
-            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <label>Course:</label>
-              <select
-                value={selectedCourse}
-                onChange={(e) => setSelectedCourse(e.target.value)}
-                style={{ minWidth: 360 }}
-              >
-                <option value="">{courseLoading ? "Loading..." : "Select a course"}</option>
-                {courseOptions.map((o) => (
-                  <option key={o.value} value={o.value}>{o.text}</option>
-                ))}
-              </select>
-              {courseError && <span style={{ color: "red" }}>{courseError}</span>}
-            </div>
-
-            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <label>Session:</label>
-              <select
-                value={selectedInternshipSession}
-                onChange={(e) => setSelectedInternshipSession(e.target.value)}
-                style={{ minWidth: 160 }}
-                disabled={!selectedCourse || internshipSessionLoading}
-              >
-                <option value="">{internshipSessionLoading ? "Loading..." : "Select a session"}</option>
-                {internshipSessionOptions.map((o) => (
-                  <option key={o.value} value={o.value}>{o.text}</option>
-                ))}
-              </select>
-              {internshipSessionError && <span style={{ color: "red" }}>{internshipSessionError}</span>}
-            </div>
-          </>
-        ) : (
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <label>Session:</label>
-            <select
-              value={selectedMentorshipSession}
-              onChange={(e) => setSelectedMentorshipSession(e.target.value)}
-              style={{ minWidth: 160 }}
-              disabled={mentorshipSessionLoading}
+            {isInternship ? (
+              <>
+                <Grid item xs={12}>
+                  <FormControl fullWidth>
+                    <InputLabel shrink>Course</InputLabel>
+                    <Select
+                      displayEmpty
+                      value={selectedCourse}
+                      onChange={(e) => setSelectedCourse(e.target.value)}
+                      disabled={courseLoading}
+                      label="Course"
+                    >
+                      <MenuItem value="">
+                        <em>{courseLoading ? "Loading..." : "Select a course"}</em>
+                      </MenuItem>
+                      {courseOptions.map((o) => (
+                        <MenuItem key={o.value} value={o.value}>{o.text}</MenuItem>
+                      ))}
+                    </Select>
+                    {courseError && <Typography color="error">{courseError}</Typography>}
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12}>
+                  <FormControl fullWidth>
+                    <InputLabel shrink>Session</InputLabel>
+                    <Select
+                      displayEmpty
+                      value={selectedInternshipSession}
+                      onChange={(e) => setSelectedInternshipSession(e.target.value)}
+                      disabled={!selectedCourse || internshipSessionLoading}
+                      label="Session"
+                    >
+                      <MenuItem value="">
+                        <em>{internshipSessionLoading ? "Loading..." : "Select a session"}</em>
+                      </MenuItem>
+                      {internshipSessionOptions.map((o) => (
+                        <MenuItem key={o.value} value={o.value}>{o.text}</MenuItem>
+                      ))}
+                    </Select>
+                    {internshipSessionError && <Typography color="error">{internshipSessionError}</Typography>}
+                  </FormControl>
+                </Grid>
+              </>
+            ) : (
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel shrink>Session</InputLabel>
+                  <Select
+                    displayEmpty
+                    value={selectedMentorshipSession}
+                    onChange={(e) => setSelectedMentorshipSession(e.target.value)}
+                    disabled={mentorshipSessionLoading}
+                    label="Session"
+                  >
+                    <MenuItem value="">
+                      <em>{mentorshipSessionLoading ? "Loading..." : "Select a session"}</em>
+                    </MenuItem>
+                    {mentorshipSessionOptions.map((o) => (
+                      <MenuItem key={o.value} value={o.value}>{o.text}</MenuItem>
+                    ))}
+                  </Select>
+                  {mentorshipSessionError && <Typography color="error">{mentorshipSessionError}</Typography>}
+                </FormControl>
+              </Grid>
+            )}
+          </Grid>
+          <Stack direction="row" spacing={2} style={{ marginTop: "16px" }}>
+            <Button
+              variant="contained"
+              onClick={onGenerate}
+              disabled={
+                docLoading ||
+                (isInternship && (!selectedCourse || !selectedInternshipSession)) ||
+                (!isInternship && !selectedMentorshipSession)
+              }
+              startIcon={docLoading && <CircularProgress size={20} />}
             >
-              <option value="">{mentorshipSessionLoading ? "Loading..." : "Select a session"}</option>
-              {mentorshipSessionOptions.map((o) => (
-                <option key={o.value} value={o.value}>{o.text}</option>
-              ))}
-            </select>
-            {mentorshipSessionError && <span style={{ color: "red" }}>{mentorshipSessionError}</span>}
-          </div>
-        )}
+              {docLoading ? "Generating..." : "Generate"}
+            </Button>
+            {hasPreview && (
+              <Button variant="outlined" onClick={downloadPdf}>
+                Download PDF
+              </Button>
+            )}
+            {docError && <Typography color="error">{docError}</Typography>}
+          </Stack>
+        </CardContent>
+      </Card>
 
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <button
-            className="border px-3 py-1 rounded"
-            onClick={onGenerate}
-            disabled={
-              docLoading ||
-              (isInternship && (!selectedCourse || !selectedInternshipSession)) ||
-              (!isInternship && !selectedMentorshipSession)
-            }
-          >
-            {docLoading ? "Generating..." : "Generate"}
-          </button>
-
-          {hasPreview && (
-            <button className="border px-3 py-1 rounded" onClick={downloadPdf}>
-              Download PDF
-            </button>
-          )}
-
-          {docError && <span style={{ color: "red" }}>{docError}</span>}
-        </div>
-      </div>
-
-      {/* HTML preview */}
-      <div
-        id="document-view"
-        style={{
-          background: "white",
-          border: "1px solid #ddd",
-          borderRadius: 8,
-          padding: 16,
-          boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
-        }}
-      >
-        <h3 style={{ marginTop: 0, marginBottom: 8 }}>
-          {isInternship
-            ? `Internship List — ${selectedCourse || "Course"} — ${selectedInternshipSession || "Session"}`
-            : "Mentorship List"}
-        </h3>
-
-        {!hasPreview ? (
-          <div style={{ color: "#666" }}>Choose options and click Generate to preview the list.</div>
-        ) : isInternship ? (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={thStyle}>#</th>
-                <th style={thStyle}>Name</th>
-                <th style={thStyle}>Matric No</th>
-                <th style={thStyle}>IC No</th>
-                <th style={thStyle}>Phone</th>
-                <th style={thStyle}>Email</th>
-              </tr>
-            </thead>
-            <tbody>
-              {students.map((s, i) => (
-                <tr key={`${s.MATRIC_NO || "-"}-${i}`}>
-                  <td style={tdCenter}>{i + 1}</td>
-                  <td style={tdLeft}>{s.STUDENT_NAME ?? "-"}</td>
-                  <td style={tdLeft}>{s.MATRIC_NO ?? "-"}</td>
-                  <td style={tdLeft}>{s.IC_NO ?? "-"}</td>
-                  <td style={tdLeft}>{s.MOBILE_NO ?? s.PHONE_NO ?? "-"}</td>
-                  <td style={tdLeft}>{s.EMAIL ?? "-"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <Box sx={{ flex: 1, minHeight: 0 }}>
+        {hasPreview ? (
+          <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+              <Typography variant="h6" gutterBottom>
+                {isInternship
+                  ? `Internship List — ${selectedCourse || "Course"} — ${selectedInternshipSession || "Session"}`
+                  : "Mentorship List"}
+              </Typography>
+              <TableContainer component={Paper} sx={{ flex: 1, overflow: 'auto' }}>
+                <Table stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>#</TableCell>
+                      <TableCell>Name</TableCell>
+                      <TableCell>Matric No</TableCell>
+                      <TableCell>IC No</TableCell>
+                      <TableCell>Phone</TableCell>
+                      <TableCell>Email</TableCell>
+                      {!isInternship && <TableCell>Failed Courses</TableCell>}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {students.map((s, i) => (
+                      <TableRow key={`${s.MATRIC_NO || "-"}-${i}`}>
+                        <TableCell>{i + 1}</TableCell>
+                        <TableCell>{s.STUDENT_NAME ?? "-"}</TableCell>
+                        <TableCell>{s.MATRIC_NO ?? "-"}</TableCell>
+                        <TableCell>{s.IC_NO ?? "-"}</TableCell>
+                        <TableCell>{s.MOBILE_NO ?? s.PHONE_NO ?? "-"}</TableCell>
+                        <TableCell>{s.EMAIL ?? "-"}</TableCell>
+                        {!isInternship && <TableCell>{s.FAILED_COURSES ?? "-"}</TableCell>}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </CardContent>
+          </Card>
         ) : (
-          // Mentorship preview includes FAILED_COURSES
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={thStyle}>#</th>
-                <th style={thStyle}>Name</th>
-                <th style={thStyle}>Matric No</th>
-                <th style={thStyle}>IC No</th>
-                <th style={thStyle}>Phone</th>
-                <th style={thStyle}>Email</th>
-                <th style={thStyle}>Failed Courses</th>
-              </tr>
-            </thead>
-            <tbody>
-              {students.map((s, i) => (
-                <tr key={`${s.MATRIC_NO || "-"}-${i}`}>
-                  <td style={tdCenter}>{i + 1}</td>
-                  <td style={tdLeft}>{s.STUDENT_NAME ?? "-"}</td>
-                  <td style={tdLeft}>{s.MATRIC_NO ?? "-"}</td>
-                  <td style={tdLeft}>{s.IC_NO ?? "-"}</td>
-                  <td style={tdLeft}>{s.MOBILE_NO ?? s.PHONE_NO ?? "-"}</td>
-                  <td style={tdLeft}>{s.EMAIL ?? "-"}</td>
-                  <td style={tdLeft}>{s.FAILED_COURSES ?? "-"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <Card>
+              <CardContent>
+                  <Typography color="textSecondary">Choose options and click Generate to preview the list.</Typography>
+              </CardContent>
+          </Card>
         )}
-      </div>
-    </div>
+      </Box>
+    </Box>
   );
 }
-
-const thStyle = {
-  textAlign: "left",
-  padding: "8px",
-  borderBottom: "1px solid #eee",
-  whiteSpace: "nowrap",
-};
-const tdLeft = {
-  textAlign: "left",
-  padding: "6px 8px",
-  borderBottom: "1px solid " + "#f4f4f4",
-  whiteSpace: "nowrap",
-};
-const tdCenter = { ...tdLeft, textAlign: "center", width: 48 };
