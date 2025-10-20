@@ -164,6 +164,7 @@ const EditStudentStatus = () => {
             <Fab
                 color="primary"
                 aria-label="add"
+                title="Add status"
                 sx={{
                     position: 'fixed',
                     bottom: 40,

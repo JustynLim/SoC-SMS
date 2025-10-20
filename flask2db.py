@@ -1799,6 +1799,29 @@ def api_delete_program(program_code):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/students/status-counts', methods=['GET'])
+def get_student_status_counts():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT STUDENT_STATUS, COUNT(*) as count
+            FROM STUDENTS
+            GROUP BY STUDENT_STATUS
+        """)
+        
+        columns = [column[0] for column in cursor.description]
+        rows = cursor.fetchall()
+
+        data = [dict(zip(columns, row)) for row in rows]
+
+        cursor.close()
+        conn.close()
+        return jsonify(data), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     #port = find_free_port()
     #print(f"Running on port {port}")

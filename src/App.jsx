@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthWrapper } from './components/AuthWrapper.jsx';
 import HomePage from './pages/HomePage.jsx';
@@ -15,8 +15,37 @@ import AdminSettingsPage from './pages/AdminSettingsPage.jsx';
 //import Sidebar from './components/Sidebar.jsx';
 //import { SetupGuard } from './components/SetupGuard.jsx';     << No longer needed
 
+function decodeJwt(token) {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    console.error("Invalid token:", e);
+    return null;
+  }
+}
 
 function App() {
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        const decodedToken = decodeJwt(token);
+        if (decodedToken && decodedToken.exp * 1000 < Date.now()) {
+          localStorage.removeItem('token');
+          window.location.href = '/login';
+        }
+      }
+    }, 5000); // Check every 5 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <BrowserRouter>
       <Routes>

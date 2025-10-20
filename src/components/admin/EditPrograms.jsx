@@ -164,6 +164,7 @@ const EditPrograms = () => {
             <Fab
                 color="primary"
                 aria-label="add"
+                title="Add Program"
                 sx={{
                     position: 'fixed',
                     bottom: 40,
