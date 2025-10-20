@@ -40,5 +40,5 @@ export default function useStudentsData() {
     return () => controller.abort();
   }, [location.pathname]);
 
-  return { data, loading, error };
+  return { data, loading, error, setData };
 }

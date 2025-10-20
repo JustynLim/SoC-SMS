@@ -165,9 +165,9 @@ export default function Register() {
   };
 
   return (
-    <div className="register-page-container"> {/* Using the same full-page container */}
-      <div className="register-box"> {/* New class for the register box */}
-        <h1 className="register-header">Register</h1> {/* New class for header */}
+    <div className="login-page-container"> {/* Using the same full-page container */}
+      <div className="login-box"> {/* New class for the register box */}
+        <h1 className="login-header">Register</h1> {/* New class for header */}
 
         {errors.api && (
           <div className="api-error">
@@ -189,7 +189,7 @@ export default function Register() {
                 placeholder="Email"
                 value={form.email}
                 onChange={handleChange}
-                className={`register-input ${errors.email ? 'error' : ''}`}
+                className={`login-input ${errors.email ? 'error' : ''}`}
               />
               {errors.email && (
                 <p className="error-message">
@@ -205,7 +205,7 @@ export default function Register() {
                 placeholder="Password"
                 value={form.password}
                 onChange={handleChange}
-                className={`register-input ${errors.password ? 'error' : ''}`}
+                className={`login-input ${errors.password ? 'error' : ''}`}
               />
               {errors.password && (
                 <p className="error-message">
@@ -221,7 +221,7 @@ export default function Register() {
                 placeholder="Confirm Password"
                 value={form.confirmPassword}
                 onChange={handleChange}
-                className={`register-input ${errors.confirmPassword ? 'error' : ''}`}
+                className={`login-input ${errors.confirmPassword ? 'error' : ''}`}
               />
               {errors.confirmPassword && (
                 <p className="error-message">
@@ -237,7 +237,7 @@ export default function Register() {
               placeholder="Enter 6-digit 2FA code"
               value={form.twoFACode}
               onChange={handleChange}
-              className={`register-input ${errors.twoFACode ? 'error' : ''}`}
+              className={`login-input ${errors.twoFACode ? 'error' : ''}`}
               pattern="\d{6}"
               maxLength={6}
             />
@@ -251,15 +251,15 @@ export default function Register() {
             <button
               type="submit"
               disabled={isLoading}
-              className="register-button" // New class for button
+              className="login-button" // New class for button
             >
               {isLoading ? 'Registering...' : 'Register'}
             </button>
           </form>
         )}
 
-        <div className="register-links"> {/* New class for links container */}
-          <Link to="/login" className="register-link"> {/* New class for link */}
+        <div className="login-links"> {/* New class for links container */}
+          <Link to="/login" className="login-link"> {/* New class for link */}
             Already have an account? Login
           </Link>
         </div>

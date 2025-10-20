@@ -11,6 +11,7 @@ import StudentsPage from './pages/StudentsPage.jsx';
 import StudentsScoresPage from './pages/StudentsScoresPage.jsx';
 import StudentDetailsPage from "./pages/StudentDetailsPage.jsx";
 import GenerateListPage from  './pages/GenerateListPage.jsx';
+import AdminSettingsPage from './pages/AdminSettingsPage.jsx';
 //import Sidebar from './components/Sidebar.jsx';
 //import { SetupGuard } from './components/SetupGuard.jsx';     << No longer needed
 
@@ -38,6 +39,7 @@ function App() {
           <Route path="/students-scores" element={<StudentsScoresPage />} />
           <Route path="/students-info/:matricNo" element={<StudentDetailsPage />} />
           <Route path="/generate-list" element={<GenerateListPage />} />
+          <Route path="/admin-settings" element={<AdminSettingsPage />} />
         </Route>
 
         {/* Catch-all */}

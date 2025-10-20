@@ -233,6 +233,7 @@ def process_student_datasheet(file_path, sheet_info, output_folder):
 
 def process_course_str(file_path, sheet_info, output_folder, is_legacy=False):
     """Process the Course-Str sheet and export course structure data."""
+    print("\n[DEBUG] Starting process_course_str.")
     try:
         # Read Excel with first row as headers
         df = pd.read_excel(file_path, sheet_name=sheet_info['name'], header=0)
@@ -327,10 +328,12 @@ def process_course_str(file_path, sheet_info, output_folder, is_legacy=False):
         print("\nFirst complete course record:")
         print(df.head(1).to_string(index=False))
         
+        print("[DEBUG] Finished process_course_str successfully.")
         return [output_file]
         
     except Exception as e:
         print(f"\n❌ Error processing Course-Str sheet: {str(e)}")
+        print("[DEBUG] Finished process_course_str with an error.")
         return None
 
 def clean_phone_number(phone):
@@ -389,39 +392,36 @@ def resolve_course_code(conn, short_code: str) -> str | None:
         # Not found or ambiguous
         return None
 
-def version_to_date(s: str):
-    y,m = map(int, s.split("-"))
-    return date(y,m,1)
-
 def import_course_structure(csv_file_path, course_version):
     """
     Import course structure data from CSV to SQL Server
     
     Args:
         csv_file_path (str): Path to the CSV file
+        course_version (str): The program code for this course structure.
+                              (Note: Parameter name is legacy, but value is program code).
         
     Returns:
         tuple: (success_count, error_count) of records processed
     """
+    print(f"\n[DEBUG] Starting import_course_structure.")
+    print(f"[DEBUG]   CSV Path: {csv_file_path}")
+    print(f"[DEBUG]   Program Code (from course_version param): {course_version}")
+
     conn = None
     insert_count = 0
     update_count = 0
     error_count = 0
-    version_date = version_to_date(course_version)
     
     try:
-        # Establish database connection
-        # conn = pyodbc.connect(
-        #     'DRIVER={ODBC Driver 17 for SQL Server};'
-        #     f'SERVER={os.getenv("MSSQL_SERVER")};'
-        #     f'DATABASE={os.getenv("MSSQL_DATABASE")};'
-        #     f'UID={os.getenv("MSSQL_USERNAME")};'
-        #     f'PWD={os.getenv("MSSQL_PASSWORD")}'
-        # )
         conn = get_db_connection()
         
-        # Read CSV file (skip first row as header)
         df = pd.read_csv(csv_file_path, header=0)
+        print(f"[DEBUG]   Read {len(df)} rows from CSV.")
+
+        if df.empty:
+            print("[DEBUG]   CSV file is empty. Aborting import.")
+            return 0, 0, 0
         
         update_query = """
         UPDATE COURSE_STRUCTURE SET
@@ -440,7 +440,7 @@ def import_course_structure(csv_file_path, course_version):
             COURSE_YEAR = ?,
             COURSE_STATUS = ?,
             COURSE_PRIORITY = ?,
-            COURSE_VERSION = ?
+            PROGRAM_CODE = ?
         WHERE COURSE_CODE = ?
         """
         
@@ -450,7 +450,7 @@ def import_course_structure(csv_file_path, course_version):
             CREDIT_HOUR, LECT_HR_WK, TUT_HR_WK, LAB_HR_WK, 
             BL_HR_WK, CU_CW_Credits, CU_EX_Credits, 
             COURSE_LEVEL, LECTURER, COURSE_YEAR,
-            COURSE_STATUS, COURSE_PRIORITY, COURSE_VERSION
+            COURSE_STATUS, COURSE_PRIORITY, PROGRAM_CODE
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
 
@@ -458,6 +458,7 @@ def import_course_structure(csv_file_path, course_version):
         # Process each row
         with conn.cursor() as cursor:
             for idx, row in df.iterrows():
+                print(f"[DEBUG]   Processing row {idx}...")
                 try:
                     # Prepare values
                     values = [
@@ -477,17 +478,19 @@ def import_course_structure(csv_file_path, course_version):
                         str(row['Year']) if pd.notna(row['Year']) else None,
                         str(row['Course Status']) if 'Course Status' in row and pd.notna(row['Course Status']) else None,
                         int(row['Course Priority']) if 'Course Priority' in row and pd.notna(row['Course Priority']) else None,
-                        version_date
+                        course_version
                     ]
                     
                     # First try to update
                     cursor.execute(update_query, values[1:] + [values[0]])
                     if cursor.rowcount > 0:
                         update_count += 1
+                        print(f"[DEBUG]     Row {idx}: Updated existing record.")
                     else:
                         # If no rows were updated, try to insert
                         cursor.execute(insert_query, values)
                         insert_count += 1
+                        print(f"[DEBUG]     Row {idx}: Inserted new record.")
                     
                 except Exception as e:
                     error_count += 1
@@ -495,8 +498,8 @@ def import_course_structure(csv_file_path, course_version):
                     print(f"Problematic values: {values}")
                     continue
             
+            print("[DEBUG]   Committing transaction...")
             conn.commit()
-            #print(f"Import completed. Success: {success_count}, Errors: {error_count}")
             print(f"Import results:")
             print(f"- {insert_count} new records inserted")
             print(f"- {update_count} existing records updated")
@@ -510,6 +513,7 @@ def import_course_structure(csv_file_path, course_version):
     finally:
         if conn:
             conn.close()
+        print("[DEBUG] Finished import_course_structure.")
     
     return insert_count, update_count, error_count
 

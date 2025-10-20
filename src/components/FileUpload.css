@@ -6,13 +6,11 @@
     justify-content: center;
     border: 2px dashed #ccc;
     border-radius: 10px;
-    padding: 2rem;
+    padding: 8rem 2rem; /* Increased vertical padding */
     text-align: center;
     cursor: pointer;
     transition: border-color 0.3s;
-    width: 100%;
-    max-width: 500px; /* Or as needed */
-    margin: 0 auto;
+    width: 100%; /* Will now fill its parent container */
 }
 
 .file-upload-container:hover,
@@ -20,14 +18,21 @@
     border-color: #007bff;
 }
 
+/* Target the text inside the container */
+.file-upload-container p {
+    font-size: 1.125rem; /* Larger text */
+    color: #666;
+}
+
 .upload-icon {
-    font-size: 3rem;
+    font-size: 4rem; /* Larger icon */
     color: #007bff;
+    margin-bottom: 1rem; /* Add space between icon and text */
 }
 
 .file-info {
     margin-top: 1rem;
-    font-size: 1rem;
+    font-size: 1.125rem; /* Match text size */
 }
 
 .file-name {

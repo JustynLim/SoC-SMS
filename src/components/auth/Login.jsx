@@ -1,33 +1,32 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import isEmail from 'validator/lib/isEmail';
+import TwoFAModal from './TwoFAModal'; // Import the modal component
 
 export default function Login() {
   const [form, setForm] = useState({
     email: '',
     password: '',
-    twoFACode: ''
   });
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
+  const [show2FAModal, setShow2FAModal] = useState(false);
   const navigate = useNavigate();
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm(prev => ({ ...prev, [name]: value }));
     
-    // Clear error when typing
-    if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: '' }));
+    if (errors[name] || errors.api) {
+      setErrors(prev => ({ ...prev, [name]: '', api: '' }));
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleCredentialSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
     setErrors({});
 
-    // Basic validation
     if (!isEmail(form.email)) {
       setErrors({ email: 'Please enter a valid email address' });
       setIsLoading(false);
@@ -40,34 +39,62 @@ export default function Login() {
       return;
     }
 
-    if (!form.twoFACode || !/^\d{6}$/.test(form.twoFACode)) {
-      setErrors({ twoFACode: 'Please enter a valid 6-digit code' });
-      setIsLoading(false);
-      return;
-    }
-
     try {
-      const response = await fetch('http://localhost:5001/api/login', {
+      // Step 1: Verify credentials
+      const response = await fetch('http://localhost:5001/api/login/verify-credentials', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: form.email,
           password: form.password,
-          twoFACode: form.twoFACode
         }),
-        credentials: 'include' // For JWT cookies
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Login failed');
+        throw new Error(data.error || 'Invalid credentials');
       }
 
-      // Store token and redirect
-      localStorage.setItem('token', data.accessToken);
-      navigate('/home');
+      // If credentials are valid, clear old errors and show the 2FA modal
+      setErrors({});
+      setShow2FAModal(true);
+
     } catch (err) {
+      setErrors({ api: err.message });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handle2FASubmit = async (twoFACode) => {
+    setIsLoading(true);
+    setErrors({}); // Clear previous 2FA errors
+
+    try {
+      const response = await fetch('http://localhost:5001/api/login/verify-2fa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: form.email,
+          twoFACode: twoFACode,
+        }),
+        credentials: 'include'
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Invalid 2FA code.');
+      }
+
+      // On successful 2FA verification, complete login
+      localStorage.setItem('token', data.accessToken);
+      setShow2FAModal(false);
+      navigate('/home');
+
+    } catch (err) {
+      // Catch the error here and set the state, which is passed to the modal
       setErrors({ api: err.message });
     } finally {
       setIsLoading(false);
@@ -78,13 +105,13 @@ export default function Login() {
   <div className="login-box">
     <h1 className="login-header">Login</h1>
     
-    {errors.api && (
+    {errors.api && !show2FAModal && (
       <div className="api-error">
         {errors.api}
       </div>
     )}
 
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleCredentialSubmit}>
       <div>
         <input
           type="email"
@@ -116,31 +143,13 @@ export default function Login() {
           </p>
         )}
       </div>
-
-      <div>
-        <input
-          type="text"
-          name="twoFACode"
-          placeholder="2FA Code"
-          value={form.twoFACode}
-          onChange={handleChange}
-          className={`login-input ${errors.twoFACode ? 'error' : ''}`}
-          pattern="\d{6}"
-          maxLength={6}
-        />
-        {errors.twoFACode && (
-          <p className="error-message">
-            {errors.twoFACode}
-          </p>
-        )}
-      </div>
       
       <button
         type="submit"
         disabled={isLoading}
         className="login-button"
       >
-        {isLoading ? 'Logging in...' : 'Login'}
+        {isLoading ? 'Verifying...' : 'Login'}
       </button>
     </form>
     
@@ -149,6 +158,18 @@ export default function Login() {
         Create Account
       </Link>
     </div>
+
+    <TwoFAModal 
+      isOpen={show2FAModal}
+      onClose={() => {
+        setShow2FAModal(false);
+        setErrors({}); // Clear errors when closing modal
+      }}
+      onSubmit={handle2FASubmit}
+      email={form.email}
+      error={errors.api} // Pass the error state to the modal
+      isLoading={isLoading}
+    />
   </div>
 );
 }

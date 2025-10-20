@@ -3,11 +3,31 @@ import { useLocation } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import useStudentsData from "../components/Students";
 import useCohorts from "../components/useCohorts";
+import StudentScoresRow from "../components/StudentScoresRow";
+import api from "../services/api";
 import "../App.css";
 
 export default function StudentsScoresPage() {
   const location = useLocation();
-  const { data, loading, error } = useStudentsData();
+  const { data, loading, error, setData } = useStudentsData();
+
+  const handleUpdateScores = async (updatedRec) => {
+    try {
+      await api.put('/students-scores', updatedRec);
+      
+      // Refetch data on success
+      const response = await api.get('/students-scores');
+      setData(response.data);
+
+    } catch (err) {
+      // The 401 error will be handled by the interceptor.
+      // We only need to handle other errors here.
+      if (err.response && err.response.status !== 401) {
+        console.error("Save error:", err);
+        alert(`Failed to save scores: ${err.response.data.error || err.message}`);
+      }
+    }
+  };
   const { cohorts, loadingCohorts, errorCohorts } = useCohorts();
   const [uploadOpen, setUploadOpen] = React.useState(false);
   const [selectedFile, setSelectedFile] = React.useState(null);
@@ -575,6 +595,7 @@ export default function StudentsScoresPage() {
                         </th>
                       );
                     })}
+                    <th rowSpan={2} style={{...thBase, verticalAlign: 'middle', position: 'sticky', right: 0, zIndex: 21, background: '#f8f9fa' }}>Actions</th>
                   </tr>
 
                   {/* Row 2: only attempt numbers under each course group */}
@@ -592,32 +613,18 @@ export default function StudentsScoresPage() {
                 </thead>
                 <tbody>
                   {visibleRows.map((rec) => (
-                    <tr key={rec.MATRIC_NO}>
-                      {visibleMetaIdxs.map((idx, slot) => {
-                        const raw =
-                          idx === 0 ? rec.meta.STUDENT_NAME :
-                          idx === 1 ? rec.meta.COHORT :
-                          idx === 2 ? rec.meta.SEM :
-                          idx === 3 ? rec.meta.CU_ID :
-                                      rec.MATRIC_NO;
-                        const content = idx === 0 ? highlight(raw) : raw;
-                        return (
-                          <td key={`meta-c-${idx}`} style={stickyTdStyle(slot)}>
-                            {content}
-                          </td>
-                        );
-                      })}
-                      {courseCodes.flatMap((course) => {
-                        const vals = rec.courses[course] ?? [null, null, null];
-                        const hide_3rd_col = hideAttempt3ByCourse.get(course) === true;
-                        const idxs = hide_3rd_col ? [0, 1] : [0, 1, 2];
-                        return idxs.map((i) => (
-                          <td key={`${course}-b${i}`} style={tdAttempt}>
-                            {fmt(vals[i])}
-                          </td>
-                        ));
-                      })}
-                    </tr>
+                    <StudentScoresRow
+                      key={rec.MATRIC_NO}
+                      rec={rec}
+                      courseCodes={courseCodes}
+                      hideAttempt3ByCourse={hideAttempt3ByCourse}
+                      visibleMetaIdxs={visibleMetaIdxs}
+                      stickyTdStyle={stickyTdStyle}
+                      highlight={highlight}
+                      onUpdate={handleUpdateScores}
+                      fmt={fmt}
+                      tdAttempt={tdAttempt}
+                    />
                   ))}
                 </tbody>
               </table>

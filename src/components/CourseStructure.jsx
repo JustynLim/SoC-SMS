@@ -23,5 +23,5 @@ export default function Course_Structure() {
       });
   }, []);
 
-  return { data, loading, error };
+  return { data, loading, error, setData };
 }

@@ -4,6 +4,7 @@ import StudentRow from "../components/StudentRow";
 import useCohorts from "../components/useCohorts";
 import useStudentsData from "../components/Students";
 import AddNewStudent from "../services/add_new_student";
+import { BsPersonAdd } from "react-icons/bs";
 import "../App.css";
 
 // Helper functions for localStorage
@@ -29,7 +30,7 @@ const loadFiltersFromStorage = () => {
 };
 
 export default function StudentsPage() {
-  const { data, loading, error } = useStudentsData();
+  const { data, loading, error, setData } = useStudentsData();
   //const [students, setStudents] = useState([]);
   const {cohorts,loadingCohorts,errorCohorts} = useCohorts();
   const [students, setStudents] = React.useState(null);
@@ -74,7 +75,11 @@ export default function StudentsPage() {
   const handleAddSuccess = (message) => {
     setSuccessMessage(message);
     setTimeout(() => setSuccessMessage(""), 3000);
-    // Refresh student list here if needed
+    // Refresh student list
+    fetch("http://localhost:5001/api/students")
+      .then(res => res.json())
+      .then(newData => setData(newData))
+      .catch(err => console.error("Failed to refetch students:", err));
   };
 
   React.useEffect(() => {
@@ -91,6 +96,28 @@ export default function StudentsPage() {
   };
 
   const [colsMenuOpen, setColsMenuOpen] = React.useState(false);
+  const [studentStatuses, setStudentStatuses] = React.useState([]);
+
+  React.useEffect(() => {
+    const fetchStatuses = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        const res = await fetch('http://localhost:5001/api/admin/student-statuses', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setStudentStatuses(data);
+        } else {
+          console.error("Failed to fetch student statuses");
+        }
+      } catch (err) {
+        console.error("Failed to fetch student statuses:", err);
+      }
+    };
+    fetchStatuses();
+  }, []);
 
   React.useLayoutEffect(() => {
     setStudents(Array.isArray(data) ? data : []);
@@ -180,7 +207,7 @@ export default function StudentsPage() {
     COHORT: "Cohort",
     SEM: "Sem",
     CU_ID: "CU ID",
-    IC_NO: "IC No",
+    IC_NO: "IC/Passport No",
     MOBILE_NO: "Mobile No",
     EMAIL: "Email",
     BM: "BM",
@@ -465,15 +492,19 @@ return (
             <button
               onClick={() => setAddStudentOpen(true)}
               style={{
-                padding: "8px 16px",
-                background: "#28a745",
+                padding: "8px",
+                background: "#1e88e5",
                 color: "white",
                 border: "none",
                 borderRadius: 4,
                 cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
               }}
+              title="Add new student"
             >
-              Add Student
+              <BsPersonAdd size={20} />
             </button>
 
             {/* // At the bottom of your component: */}
@@ -599,6 +630,7 @@ return (
                     onUpdate={updateStudent}
                     onDelete={(id) => deleteStudent(id)}
                     highlight={highlight}
+                    studentStatuses={studentStatuses}
                   />
                 ))}
               </tbody>

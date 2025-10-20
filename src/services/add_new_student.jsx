@@ -1,391 +1,202 @@
 import React, { useState, useEffect } from "react";
-import { MdClose } from "react-icons/md";
+import api from "./api";
+import { PhoneInput } from 'react-international-phone';
+import 'react-international-phone/style.css';
+
+const InputField = ({ name, label, value, onChange, type = "text", required = false, ...props }) => (
+  <div>
+    <label htmlFor={name} className="block text-sm font-medium text-gray-700">{label}{required && <span className="text-red-500">*</span>}</label>
+    <input
+      type={type}
+      id={name}
+      name={name}
+      value={value}
+      onChange={onChange}
+      required={required}
+      {...props}
+      className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+    />
+  </div>
+);
+
+const SelectField = ({ name, label, value, onChange, options, required = false }) => (
+  <div>
+    <label htmlFor={name} className="block text-sm font-medium text-gray-700">{label}{required && <span className="text-red-500">*</span>}</label>
+    <select
+      id={name}
+      name={name}
+      value={value}
+      onChange={onChange}
+      required={required}
+      className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+    >
+      {options.map((option) => (
+        <option key={option} value={option}>{option}</option>
+      ))}
+    </select>
+  </div>
+);
+
+const initialState = {
+  STUDENT_NAME: "",
+  COHORT: "",
+  SEM: "1",
+  CU_ID: "",
+  IC_NO: "",
+  MOBILE_NO: "",
+  EMAIL: "",
+  BM: "A",
+  ENGLISH: "A",
+  ENTRY_Q: "",
+  MATRIC_NO: "",
+  PROGRAM_CODE: "",
+};
 
 export default function AddNewStudent({ isOpen, onClose, onSuccess }) {
-  const [formData, setFormData] = useState({
-    STUDENT_NAME: "",
-    COHORT: "",
-    SEM: "",
-    CU_ID: "",
-    IC_NO: "",
-    MOBILE_NO: "",
-    EMAIL: "",
-    BM: "",
-    ENGLISH: "",
-    ENTRY_Q: "",
-    MATRIC_NO: "",
-    COURSE_VERSION: "",
-  });
-
-  const [courseVersions, setCourseVersions] = useState([]);
+  const [formData, setFormData] = useState(initialState);
+  const [programs, setPrograms] = useState([]); // Changed from courseVersions
+  const [idType, setIdType] = useState('IC'); // Add state for ID Type
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Fetch available course versions
   useEffect(() => {
     if (isOpen) {
-      fetch("http://localhost:5001/api/course-versions")
-        .then((res) => res.json())
-        .then((data) => setCourseVersions(data.versions || []))
-        .catch((err) => console.error("Failed to fetch course versions:", err));
+      const fetchPrograms = async () => { // Changed from fetchCourseVersions
+        try {
+          const res = await api.get("/admin/programs"); // Changed endpoint
+          const programData = res.data || [];
+          setPrograms(programData);
+          if (programData.length > 0) {
+            setFormData(prev => ({ ...prev, PROGRAM_CODE: programData[0] }));
+          }
+        } catch (err) {
+          if (err.response && err.response.status === 401) {
+            setError("Session expired. Redirecting to login...");
+            localStorage.removeItem("token");
+            setTimeout(() => {
+              window.location.href = "/login";
+            }, 2000);
+          } else {
+            console.error("Failed to fetch programs:", err);
+            setError("Failed to load programs.");
+          }
+        }
+      };
+      fetchPrograms();
     }
   }, [isOpen]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    // Normalize COHORT to YYYY-MM-DD
-    if (name === "COHORT") {
-      // If user agent ever returns dd-mm-yyyy, normalize
-      // Detect dd-mm-yyyy by regex:
-      const ddmmyyyy = /^(\d{2})-(\d{2})-(\d{4})$/;
-      if (ddmmyyyy.test(value)) {
-        const [, dd, mm, yyyy] = value.match(ddmmyyyy);
-        const iso = `${yyyy}-${mm}-${dd}`;
-        setFormData((f) => ({ ...f, COHORT: iso }));
-        return;
+
+    if (name === 'IC_NO' && idType === 'IC') {
+      const digits = value.replace(/[^\d]/g, '');
+      const truncatedDigits = digits.slice(0, 12);
+      let formatted = truncatedDigits;
+
+      if (truncatedDigits.length > 8) {
+        formatted = `${truncatedDigits.slice(0, 6)}-${truncatedDigits.slice(6, 8)}-${truncatedDigits.slice(8)}`;
+      } else if (truncatedDigits.length > 6) {
+        formatted = `${truncatedDigits.slice(0, 6)}-${truncatedDigits.slice(6)}`;
       }
+
+      setFormData((prev) => ({ ...prev, IC_NO: formatted }));
+    } else {
+      setFormData((prev) => ({ ...prev, [name]: value }));
     }
-    setFormData((f) => ({ ...f, [name]: value }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
 
-    const requiredFields = ["STUDENT_NAME", "COHORT", "SEM", "CU_ID", "IC_NO", "MATRIC_NO", "COURSE_VERSION"];
-    for (const field of requiredFields) {
-      const v = (formData[field] ?? "").toString().trim();
-      if (!v) {
-        setError(`${field.replace("_", " ")} is required`);
+    // Email validation
+    if (formData.EMAIL && !/^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/i.test(formData.EMAIL)) {
+        setError("Please enter a valid email address.");
         return;
-      }
     }
 
-    // Extra client-side checks
-    let cohort = (formData.COHORT || "").trim();
-    // Ensure date is strictly YYYY-MM-DD (HTML date input uses this)
-    // Accept dd-mm-yyyy and convert to ISO if user agent/localization produced that
-    const ddmmyyyy = /^(\d{2})-(\d{2})-(\d{4})$/;
-    if (ddmmyyyy.test(cohort)) {
-      const [, dd, mm, yyyy] = cohort.match(ddmmyyyy);
-      cohort = `${yyyy}-${mm}-${dd}`;
+    // Final validation before submitting
+    if (!/^P\d{8}$/.test(formData.MATRIC_NO)) {
+        setError("Invalid Matric No format. Please use P followed by 8 digits.");
+        return;
     }
-
-    // Final check must be ISO
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(cohort)) {
-      setError("COHORT must be a valid date (YYYY-MM-DD)");
-      return;
-    }
-
-    // Ensure CU_ID contains only digits (backend coerces to int)
-    const cu = formData.CU_ID.toString().trim();
-    if (!/^\d+$/.test(cu)) {
-      setError("CU ID must be numeric");
-      return;
-    }
-
-    // 4) SEM is varchar(2) in DB; keep as trimmed string (from number input)
-    const semStr = (formData.SEM ?? "").toString().trim();
-    if (!semStr) {
-      setError("SEM is required");
-      return;
-    }
-
-    // Normalize payload to expected backend types/format
-    const payload = {
-      STUDENT_NAME: formData.STUDENT_NAME.toString().trim(),
-      COHORT: cohort,                 // keep as 'YYYY-MM-DD'
-      SEM: semStr,  // varchar(2) in DB
-      CU_ID: cu,                      // backend will int() this
-      IC_NO: formData.IC_NO.toString().trim(),
-      MOBILE_NO: (formData.MOBILE_NO ?? "").toString().trim(),
-      EMAIL: (formData.EMAIL ?? "").toString().trim(),
-      BM: (formData.BM ?? "").toString().trim(),
-      ENGLISH: (formData.ENGLISH ?? "").toString().trim(),
-      ENTRY_Q: (formData.ENTRY_Q ?? "").toString().trim(),
-      MATRIC_NO: formData.MATRIC_NO.toString().trim(),
-      COURSE_VERSION: formData.COURSE_VERSION.toString().trim(),
-    };
 
     setLoading(true);
+
+    const payload = { ...formData };
+    // Handle Mobile No: if it's just a country code, send empty string to be saved as '-'
+    if (payload.MOBILE_NO && payload.MOBILE_NO.length <= 5) {
+      payload.MOBILE_NO = "";
+    } else if (payload.MOBILE_NO) {
+      payload.MOBILE_NO = payload.MOBILE_NO.replace(/^\+/, '');
+    }
+
     try {
-      const res = await fetch("http://localhost:5001/api/add-student", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const text = await res.text();
-      let json;
-      try { json = JSON.parse(text); } catch { json = { error: text }; }
-
-      if (!res.ok) {
-        throw new Error(json.error || `Failed to add student (${res.status})`);
-      }
-
-      onSuccess(json.message || "Student added successfully");
+      const res = await api.post("/add-student", payload);
+      onSuccess(res.data.message || "Student added successfully");
       onClose();
-      
-      // Reset form
-      setFormData({
-        STUDENT_NAME: "",
-        COHORT: "",
-        SEM: "",
-        CU_ID: "",
-        IC_NO: "",
-        MOBILE_NO: "",
-        EMAIL: "",
-        BM: "",
-        ENGLISH: "",
-        ENTRY_Q: "",
-        MATRIC_NO: "",
-        COURSE_VERSION: "",
-      });
+      setFormData(initialState); // Reset form
     } catch (err) {
-      setError(err.message);
+      if (err.response && err.response.status === 401) {
+        setError("Session expired. Redirecting to login...");
+        localStorage.removeItem("token");
+        setTimeout(() => {
+          window.location.href = "/login";
+        }, 2000);
+      } else {
+        setError(err.response?.data?.error || "An error occurred while adding the student.");
+      }
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
+
   if (!isOpen) return null;
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.4)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
-        padding: 16,
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: "white",
-          borderRadius: 8,
-          boxShadow: "0 12px 32px rgba(0,0,0,0.2)",
-          width: "min(600px, 95vw)",
-          maxHeight: "90vh",
-          overflow: "auto",
-          padding: 24,
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>Add New Student</h2>
-          <button
-            onClick={onClose}
-            style={{
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              padding: 4,
-            }}
-          >
-            <MdClose size={24} />
-          </button>
-        </div>
-
-        {error && (
-          <div style={{ padding: 12, background: "#fee", color: "#c00", borderRadius: 4, marginBottom: 16 }}>
-            {error}
-          </div>
-        )}
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+      <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+        <h2 className="text-2xl font-bold mb-6">Add New Student</h2>
+        
+        {error && <p className="text-red-500 bg-red-100 p-3 rounded mb-4">{error}</p>}
 
         <form onSubmit={handleSubmit}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            {/* Name - Full width */}
-            <div style={{ gridColumn: "1 / -1" }}>
-              <label style={{ display: "block", marginBottom: 4, fontWeight: 500 }}>
-                Name <span style={{ color: "red" }}>*</span>
-              </label>
-              <input
-                name="STUDENT_NAME"
-                value={formData.STUDENT_NAME}
-                onChange={handleChange}
-                required
-                style={{ width: "100%", padding: "8px 12px", border: "1px solid #ddd", borderRadius: 4 }}
-              />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2">
+              <InputField name="STUDENT_NAME" label="Name" value={formData.STUDENT_NAME} onChange={handleChange} required />
             </div>
-
-            {/* Matric No */}
+            <InputField name="MATRIC_NO" label="Matric No" value={formData.MATRIC_NO} onChange={handleChange} required pattern="P\d{8}" title="Must start with 'P' followed by 8 digits." />
+            <InputField name="CU_ID" label="CU ID" value={formData.CU_ID} onChange={handleChange} required />
+            <SelectField name="idType" label="ID Type" value={idType} onChange={(e) => setIdType(e.target.value)} options={['IC', 'Passport']} />
+            <InputField name="IC_NO" label="IC/Passport No" value={formData.IC_NO} onChange={handleChange} required />
+            <InputField name="COHORT" label="Cohort" type="date" value={formData.COHORT} onChange={handleChange} required />
+            <SelectField name="SEM" label="Semester" min="1" value={formData.SEM} onChange={handleChange} options={[1,4]} required />
+            <div className="md:col-span-2">
+                <SelectField name="PROGRAM_CODE" label="Program Code" value={formData.PROGRAM_CODE} onChange={handleChange} options={programs} required />
+            </div>
             <div>
-              <label style={{ display: "block", marginBottom: 4, fontWeight: 500 }}>
-                Matric No <span style={{ color: "red" }}>*</span>
-              </label>
-              <input
-                name="MATRIC_NO"
-                value={formData.MATRIC_NO}
-                onChange={handleChange}
-                required
-                style={{ width: "100%", padding: "8px 12px", border: "1px solid #ddd", borderRadius: 4 }}
-              />
-            </div>
-
-            {/* CU ID */}
-            <div>
-              <label style={{ display: "block", marginBottom: 4, fontWeight: 500 }}>
-                CU ID <span style={{ color: "red" }}>*</span>
-              </label>
-              <input
-                name="CU_ID"
-                type="number"
-                value={formData.CU_ID}
-                onChange={handleChange}
-                required
-                style={{ width: "100%", padding: "8px 12px", border: "1px solid #ddd", borderRadius: 4 }}
-              />
-            </div>
-
-            {/* IC No */}
-            <div>
-              <label style={{ display: "block", marginBottom: 4, fontWeight: 500 }}>
-                IC/Passport No <span style={{ color: "red" }}>*</span>
-              </label>
-              <input
-                name="IC_NO"
-                value={formData.IC_NO}
-                onChange={handleChange}
-                required
-                style={{ width: "100%", padding: "8px 12px", border: "1px solid #ddd", borderRadius: 4 }}
-              />
-            </div>
-
-            {/* Cohort */}
-            <div>
-              <label style={{ display: "block", marginBottom: 4, fontWeight: 500 }}>
-                Cohort <span style={{ color: "red" }}>*</span>
-              </label>
-              <input
-                name="COHORT"
-                type="date"
-                value={formData.COHORT}
-                onChange={handleChange}
-                required
-                style={{ width: "100%", padding: "8px 12px", border: "1px solid #ddd", borderRadius: 4 }}
-              />
-            </div>
-
-            {/* Semester */}
-            <div>
-              <label style={{ display: "block", marginBottom: 4, fontWeight: 500 }}>
-                Semester <span style={{ color: "red" }}>*</span>
-              </label>
-              <input
-                name="SEM"
-                type="number"
-                min="1"
-                value={formData.SEM}
-                onChange={handleChange}
-                required
-                style={{ width: "100%", padding: "8px 12px", border: "1px solid #ddd", borderRadius: 4 }}
-              />
-            </div>
-
-            {/* Course Version */}
-            <div style={{ gridColumn: "1 / -1" }}>
-              <label style={{ display: "block", marginBottom: 4, fontWeight: 500 }}>
-                Course Version <span style={{ color: "red" }}>*</span>
-              </label>
-              <select
-                name="COURSE_VERSION"
-                value={formData.COURSE_VERSION}
-                onChange={handleChange}
-                required
-                style={{ width: "100%", padding: "8px 12px", border: "1px solid #ddd", borderRadius: 4 }}
-              >
-                <option value="">-- Select Course Version --</option>
-                {courseVersions.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Optional Fields */}
-            <div>
-              <label style={{ display: "block", marginBottom: 4, fontWeight: 500 }}>Mobile No</label>
-              <input
-                name="MOBILE_NO"
+              <label htmlFor="MOBILE_NO" className="block text-sm font-medium text-gray-700">Mobile No</label>
+              <PhoneInput
+                defaultCountry="my"
                 value={formData.MOBILE_NO}
-                onChange={handleChange}
-                style={{ width: "100%", padding: "8px 12px", border: "1px solid #ddd", borderRadius: 4 }}
+                onChange={(phone) => setFormData(prev => ({ ...prev, MOBILE_NO: phone }))}
+                className="mt-1"
+                inputClassName="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
               />
             </div>
-
-            <div>
-              <label style={{ display: "block", marginBottom: 4, fontWeight: 500 }}>Email</label>
-              <input
-                name="EMAIL"
-                type="email"
-                value={formData.EMAIL}
-                onChange={handleChange}
-                style={{ width: "100%", padding: "8px 12px", border: "1px solid #ddd", borderRadius: 4 }}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: "block", marginBottom: 4, fontWeight: 500 }}>BM</label>
-              <input
-                name="BM"
-                value={formData.BM}
-                onChange={handleChange}
-                style={{ width: "100%", padding: "8px 12px", border: "1px solid #ddd", borderRadius: 4 }}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: "block", marginBottom: 4, fontWeight: 500 }}>English</label>
-              <input
-                name="ENGLISH"
-                value={formData.ENGLISH}
-                onChange={handleChange}
-                style={{ width: "100%", padding: "8px 12px", border: "1px solid #ddd", borderRadius: 4 }}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: "block", marginBottom: 4, fontWeight: 500 }}>Entry-Q</label>
-              <input
-                name="ENTRY_Q"
-                value={formData.ENTRY_Q}
-                onChange={handleChange}
-                style={{ width: "100%", padding: "8px 12px", border: "1px solid #ddd", borderRadius: 4 }}
-              />
-            </div>
+            <InputField name="EMAIL" label="Email" type="email" value={formData.EMAIL} onChange={handleChange} pattern="[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}" title="Please enter a valid email address (e.g., user@example.com)" />
+            <SelectField name="BM" label="BM" value={formData.BM} onChange={handleChange} options={['A','B','C','D','E','F']} />
+            <SelectField name="ENGLISH" label="English" value={formData.ENGLISH} onChange={handleChange} options={['A','B','C','D','E','F']} />
+            <InputField name="ENTRY_Q" label="Entry-Q" value={formData.ENTRY_Q} onChange={handleChange} />
           </div>
 
-          <div style={{ marginTop: 24, display: "flex", justifyContent: "flex-end", gap: 12 }}>
-            <button
-              type="button"
-              onClick={onClose}
-              style={{
-                padding: "8px 16px",
-                border: "1px solid #ddd",
-                borderRadius: 4,
-                background: "white",
-                cursor: "pointer",
-              }}
-            >
+          <div className="flex justify-end gap-4 mt-6">
+            <button type="button" onClick={onClose} className="px-4 py-2 rounded bg-gray-300 hover:bg-gray-400">
               Cancel
             </button>
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                padding: "8px 16px",
-                border: "none",
-                borderRadius: 4,
-                background: loading ? "#ccc" : "#007bff",
-                color: "white",
-                cursor: loading ? "not-allowed" : "pointer",
-              }}
-            >
+            <button type="submit" disabled={loading} className={`px-4 py-2 rounded text-white ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}>
               {loading ? "Adding..." : "Add Student"}
             </button>
           </div>
