@@ -3,6 +3,7 @@ import Sidebar from "../components/Sidebar";
 import StudentRow from "../components/StudentRow";
 import useCohorts from "../components/useCohorts";
 import useStudentsData from "../components/Students";
+import api from '../services/api';
 import AddNewStudent from "../services/add_new_student";
 import { BsPersonAdd } from "react-icons/bs";
 import "../App.css";
@@ -42,7 +43,7 @@ export default function StudentsPage() {
 
   // Add new student (individually)
   const [addStudentOpen, setAddStudentOpen] = useState(false);
-  const [successMessage, setSuccessMessage] = useState("");
+  const [successMessage, setSuccessMessage, ] = useState("");
 
   // Search functionality
   const [query, setQuery] = React.useState("");
@@ -76,9 +77,8 @@ export default function StudentsPage() {
     setSuccessMessage(message);
     setTimeout(() => setSuccessMessage(""), 3000);
     // Refresh student list
-    fetch("http://localhost:5001/api/students")
-      .then(res => res.json())
-      .then(newData => setData(newData))
+    api.get('/students')
+      .then(newData => setData(newData.data))
       .catch(err => console.error("Failed to refetch students:", err));
   };
 
@@ -101,17 +101,8 @@ export default function StudentsPage() {
   React.useEffect(() => {
     const fetchStatuses = async () => {
       try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-        const res = await fetch('http://localhost:5001/api/admin/student-statuses', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setStudentStatuses(data);
-        } else {
-          console.error("Failed to fetch student statuses");
-        }
+        const res = await api.get('/admin/student-statuses');
+        setStudentStatuses(res.data);
       } catch (err) {
         console.error("Failed to fetch student statuses:", err);
       }
@@ -275,15 +266,7 @@ export default function StudentsPage() {
     }
 
     try {
-      const res = await fetch(`http://localhost:5001/api/students/${student.STUDENT_ID}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) throw new Error(`Failed to update: ${res.status}`);
-      const saved = await res.json();
-      console.log(saved);
+      const res = await api.put(`/students/${student.STUDENT_ID}`, payload);
 
       // Update state
       setStudents((prev) =>
@@ -298,11 +281,7 @@ export default function StudentsPage() {
   // --- API: Delete student
   const deleteStudent = async (studentId) => {
     try {
-      const res = await fetch(`http://localhost:5001/api/students/${studentId}`, {
-        method: "DELETE",
-      });
-
-      if (!res.ok) throw new Error(`Failed to delete student: ${res.status}`);
+      await api.delete(`/students/${studentId}`);
 
       // Update state
       setStudents((prev) => prev.filter((s) => s.STUDENT_ID !== studentId));

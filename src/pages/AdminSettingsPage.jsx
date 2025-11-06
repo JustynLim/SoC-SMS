@@ -3,6 +3,7 @@ import { Tabs, Tab, Box } from '@mui/material';
 import Sidebar from '../components/Sidebar'; // Import Sidebar
 import EditStudentStatus from '../components/admin/EditStudentStatus';
 import EditPrograms from '../components/admin/EditPrograms';
+import EditLecturers from '../components/admin/EditLecturers';
 
 
 function TabPanel(props) {
@@ -40,6 +41,7 @@ const AdminSettingsPage = () => {
             <Tabs value={value} onChange={handleChange} aria-label="admin settings tabs">
               <Tab label="Edit Student Status" id="admin-tab-0" />
               <Tab label="Edit Programs" id="admin-tab-1" />
+              <Tab label="Lecturers" id="admin-tab-2" />
             </Tabs>
           </Box>
           <TabPanel value={value} index={0}>
@@ -47,7 +49,11 @@ const AdminSettingsPage = () => {
           </TabPanel>
           <TabPanel value={value} index={1}>
             <EditPrograms />
-          </TabPanel>        </Box>
+          </TabPanel>
+          <TabPanel value={value} index={2}>
+            <EditLecturers />
+          </TabPanel>
+        </Box>
       </div>
     </div>
   );

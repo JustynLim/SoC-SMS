@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../services/api';
 import { 
     Box, Button, TextField, Typography, 
     IconButton, Dialog, DialogActions, DialogContent, DialogTitle, CircularProgress,
@@ -18,16 +18,12 @@ const EditStudentStatus = () => {
 
     const fetchStatuses = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const res = await axios.get('http://localhost:5001/api/admin/student-statuses', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const res = await api.get('/admin/student-statuses');
             setStatuses(res.data);
         } catch (err) {
             if (err.response && err.response.status === 401) {
                 setError('Session expired. Please log in again.');
-                localStorage.removeItem('token');
-                window.location.href = '/login';
+                // The interceptor in api.js should handle redirection
             } else {
                 setError('Failed to fetch statuses.');
             }
@@ -60,16 +56,13 @@ const EditStudentStatus = () => {
 
     const handleSave = async () => {
         try {
-            const token = localStorage.getItem('token');
             if (isEditing) {
-                await axios.put(`http://localhost:5001/api/admin/student-statuses/${currentStatus}`,
-                    { new_status_name: newStatusName },
-                    { headers: { Authorization: `Bearer ${token}` } }
+                await api.put(`/admin/student-statuses/${currentStatus}`,
+                    { new_status_name: newStatusName }
                 );
             } else {
-                await axios.post('http://localhost:5001/api/admin/student-statuses',
-                    { status_name: newStatusName },
-                    { headers: { Authorization: `Bearer ${token}` } }
+                await api.post('/admin/student-statuses',
+                    { status_name: newStatusName }
                 );
             }
             fetchStatuses();
@@ -82,10 +75,7 @@ const EditStudentStatus = () => {
     const handleDelete = async (statusName) => {
         if (window.confirm('Are you sure you want to delete this status?')) {
             try {
-                const token = localStorage.getItem('token');
-                await axios.delete(`http://localhost:5001/api/admin/student-statuses/${statusName}`,
-                    { headers: { Authorization: `Bearer ${token}` } }
-                );
+                await api.delete(`/admin/student-statuses/${statusName}`);
                 fetchStatuses();
             } catch (err) {
                 setError('Failed to delete status.');
@@ -105,7 +95,7 @@ const EditStudentStatus = () => {
                 {isLoading ? (
                     <CircularProgress />
                 ) : (
-                    <TableContainer component={Paper} sx={{ border: '1px solid #eee', width: 'fit-content' }}>
+                    <TableContainer component={Paper} sx={{ border: '1px solid #eee', width: 'fit-content', maxHeight: 440 }}>
                         <Table>
                             <TableHead>
                                 <TableRow>

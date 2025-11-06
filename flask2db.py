@@ -2,12 +2,13 @@ from cryptography.fernet import Fernet
 from src.services.data_processing import decrypt_ic, encrypt_ic, import_marksheet, import_student_data ,import_course_structure, process_student_datasheet, process_course_str
 from src.services.admin_services import (
     get_all_student_statuses, add_student_status, update_student_status, delete_student_status,
-    get_all_programs, add_program, update_program, delete_program
+    get_all_programs, add_program, update_program, delete_program,
+    get_all_lecturers, add_lecturer, update_lecturer, deactivate_lecturer
 )
 from src.db.core import get_db_connection
 from src.services.predictions import prediction_bp # Blueprint for predictive model
-from flask import current_app,Flask, jsonify, render_template, Response, request
-from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required, JWTManager, set_access_cookies
+from flask import current_app,Flask, jsonify, make_response, render_template, Response, request
+from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt_identity, jwt_required, JWTManager, set_access_cookies, set_refresh_cookies, unset_jwt_cookies
 import base64,datetime,hashlib,logging,os,pdfkit,pyodbc,pyotp,re,socket,tempfile,uuid
 #from contextlib import closing
 from datetime import date,datetime, timedelta
@@ -35,7 +36,7 @@ PDFKIT_CONFIG = build_pdfkit_config()
 # Preserve variables in case disabling 2FA secret
 PRESERVE_VARS = [
     'PATH',                     # System-critical (avoid breaking shell access)
-    'JWT_SECRET_KEY'            # Preserve existing session
+    'JWT_SECRET_KEY',            # Preserve existing session
     'MSSQL_SERVER',
     'MSSQL_DATABASE',
     'MSSQL_USERNAME',
@@ -102,9 +103,16 @@ app = Flask(__name__)
 # })
 
 
-CORS(app, supports_credentials=True, origins=["http://localhost:5173"])
+CORS(app, supports_credentials=True, origins=["http://localhost:5173"], allow_headers=["Content-Type", "X-CSRF-TOKEN"])
 # CORS(app, supports_credentials=True, resources={r"/api/*": {"origins": ["http://localhost:5173"]}})
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY')
+app.config['JWT_TOKEN_LOCATION'] = ['cookies']
+app.config['JWT_COOKIE_SECURE'] = False  # Set to True in production for HTTPS
+app.config['JWT_ACCESS_COOKIE_PATH'] = '/api/'
+app.config['JWT_REFRESH_COOKIE_PATH'] = '/api/token/refresh'
+app.config['JWT_COOKIE_CSRF_PROTECT'] = True
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=15)
+app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=30)
 jwt = JWTManager(app)
 
 upload_folder = "uploads"
@@ -254,109 +262,109 @@ def fetch_mentorship_list(session: str):
     conn.close()
     return data
 
-def convert_course_version_to_date(raw) -> date:
-    if isinstance(raw, date) and not isinstance(raw, datetime):
-        return raw
-    if isinstance(raw, datetime):
-        return raw.date()
-    s = str(raw or "").strip()
+# def convert_course_version_to_date(raw) -> date:
+#     if isinstance(raw, date) and not isinstance(raw, datetime):
+#         return raw
+#     if isinstance(raw, datetime):
+#         return raw.date()
+#     s = str(raw or "").strip()
 
-    # Try ISO YYYY-MM-DD
-    try:
-        return datetime.strptime(s, "%Y-%m-%d").date()
-    except ValueError:
-        pass
-    # Try RFC1123: 'Thu, 01 Apr 2021 00:00:00 GMT'
-    try:
-        return datetime.strptime(s, "%a, %d %b %Y %H:%M:%S %Z").date()
-    except ValueError:
-        pass
+#     # Try ISO YYYY-MM-DD
+#     try:
+#         return datetime.strptime(s, "%Y-%m-%d").date()
+#     except ValueError:
+#         pass
+#     # Try RFC1123: 'Thu, 01 Apr 2021 00:00:00 GMT'
+#     try:
+#         return datetime.strptime(s, "%a, %d %b %Y %H:%M:%S %Z").date()
+#     except ValueError:
+#         pass
 
-    raise ValueError(f"COURSE_VERSION must be a date (got: {s})")
+#     raise ValueError(f"COURSE_VERSION must be a date (got: {s})")
 
 # Set up logging (you can configure the level and format as per your needs)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def insert_new_student_scores(matric_no: str, course_version: str) -> tuple[int, int]:
-    """
-    Inserts one STUDENT_SCORE row per course in the given version.
-    Returns (inserted_count, skipped_count).
-    Skips duplicates safely if UC_Student_Course already has a row.
-    """
-    inserted = 0
-    skipped = 0
-    conn = None
+# def insert_new_student_scores(matric_no: str, course_version: str) -> tuple[int, int]:
+#     """
+#     Inserts one STUDENT_SCORE row per course in the given version.
+#     Returns (inserted_count, skipped_count).
+#     Skips duplicates safely if UC_Student_Course already has a row.
+#     """
+#     inserted = 0
+#     skipped = 0
+#     conn = None
 
-    try:
-        course_version_date = convert_course_version_to_date(course_version)
+#     try:
+#         course_version_date = convert_course_version_to_date(course_version)
 
-    except ValueError as ve:
-        raise
+#     except ValueError as ve:
+#         raise
 
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
+#     try:
+#         conn = get_db_connection()
+#         cur = conn.cursor()
 
-        # Fetch course list for version
-        cur.execute(
-            """
-            SELECT COURSE_CODE, COURSE_CLASSIFICATION
-            FROM COURSE_STRUCTURE
-            WHERE COURSE_VERSION = ?
-            """,
-            (course_version_date,)
-        )
-        courses = cur.fetchall()
+#         # Fetch course list for version
+#         cur.execute(
+#             """
+#             SELECT COURSE_CODE, COURSE_CLASSIFICATION
+#             FROM COURSE_STRUCTURE
+#             WHERE COURSE_VERSION = ?
+#             """,
+#             (course_version_date,)
+#         )
+#         courses = cur.fetchall()
 
-        if not courses:
-            cur.close()
-            conn.close()
-            return (0, 0)
+#         if not courses:
+#             cur.close()
+#             conn.close()
+#             return (0, 0)
 
-        insert_sql = """
-        INSERT INTO STUDENT_SCORE (
-            MATRIC_NO, COURSE_CODE, ATTEMPT_1, ATTEMPT_2, ATTEMPT_3,
-            A1_UPDATED_AT, A2_UPDATED_AT, A3_UPDATED_AT
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """
+#         insert_sql = """
+#         INSERT INTO STUDENT_SCORE (
+#             MATRIC_NO, COURSE_CODE, ATTEMPT_1, ATTEMPT_2, ATTEMPT_3,
+#             A1_UPDATED_AT, A2_UPDATED_AT, A3_UPDATED_AT
+#         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+#         """
 
-        today = date.today()
+#         today = date.today()
 
-        for course_code, classification in courses:
-            is_mpu = bool(classification) and str(classification).upper().startswith("MPU")
-            if is_mpu:
-                params = (matric_no, course_code, "-", "-", "N/A", None, None, today) # None = null value for a{n}_updated_at
-            else:
-                params = (matric_no, course_code, "-", "-", "-", None, None, None)
+#         for course_code, classification in courses:
+#             is_mpu = bool(classification) and str(classification).upper().startswith("MPU")
+#             if is_mpu:
+#                 params = (matric_no, course_code, "-", "-", "N/A", None, None, today) # None = null value for a{n}_updated_at
+#             else:
+#                 params = (matric_no, course_code, "-", "-", "-", None, None, None)
 
-            try:
-                cur.execute(insert_sql, params)
-                inserted += 1
-            except Exception as ex:
-                # If duplicate due to UC_Student_Course, skip; else re-raise
-                # SQLState 23000-ish: unique constraint. For portability, re-check existence.
-                cur.execute(
-                    "SELECT 1 FROM STUDENT_SCORE WHERE MATRIC_NO=? AND COURSE_CODE=?",
-                    (matric_no, course_code)
-                )
-                if cur.fetchone():
-                    skipped += 1
-                else:
-                    raise
+#             try:
+#                 cur.execute(insert_sql, params)
+#                 inserted += 1
+#             except Exception as ex:
+#                 # If duplicate due to UC_Student_Course, skip; else re-raise
+#                 # SQLState 23000-ish: unique constraint. For portability, re-check existence.
+#                 cur.execute(
+#                     "SELECT 1 FROM STUDENT_SCORE WHERE MATRIC_NO=? AND COURSE_CODE=?",
+#                     (matric_no, course_code)
+#                 )
+#                 if cur.fetchone():
+#                     skipped += 1
+#                 else:
+#                     raise
 
-        conn.commit()
-        cur.close()
-        conn.close()
-        return (inserted, skipped)
-    except Exception:
-        if conn:
-            conn.rollback()
-            try:
-                cur.close()
-            except Exception:
-                pass
-            conn.close()
-        raise
+#         conn.commit()
+#         cur.close()
+#         conn.close()
+#         return (inserted, skipped)
+#     except Exception:
+#         if conn:
+#             conn.rollback()
+#             try:
+#                 cur.close()
+#             except Exception:
+#                 pass
+#             conn.close()
+#         raise
 
 
 # I will slap perplexity if the new function doesnt work
@@ -472,7 +480,6 @@ def add_student():
                 conn.close()
             except Exception:
                 pass
-
 
 @app.route('/api/cohorts', methods=['GET'])
 def list_cohorts():
@@ -1122,10 +1129,27 @@ def verify_2fa_and_login():
 
     # On success, generate JWT
     access_token = create_access_token(identity=email)
-    return jsonify({
-        "accessToken": access_token,
-        "email": email
-    })
+    refresh_token = create_refresh_token(identity=email)
+
+    response = jsonify({"message": "Login successful"})
+    set_access_cookies(response, access_token)
+    set_refresh_cookies(response, refresh_token)
+    return response
+
+@app.route('/api/token/refresh', methods=['POST'])
+@jwt_required(refresh=True)
+def refresh():
+    identity = get_jwt_identity()
+    access_token = create_access_token(identity=identity)
+    response = jsonify({'message': 'Token refreshed'})
+    set_access_cookies(response, access_token)
+    return response
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    response = jsonify({'message': 'Logout successful'})
+    unset_jwt_cookies(response)
+    return response
 
 @app.route('/api/import-marksheet', methods=['POST'])
 @cross_origin(origins=["http://localhost:5173"])
@@ -1173,23 +1197,15 @@ def generate_invite_token():
     })
 
 # Registration Endpoint
-@app.route('/api/register', methods=['POST', 'OPTIONS'])
+@app.route('/api/register', methods=['POST'])
 def register():
-    #read_env()
-    if request.method == 'OPTIONS':
-        # Handle preflight request
-        response = jsonify({'message': 'Preflight OK'})
-        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5173')
-        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
-        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        return response, 200
-    
     try:
         data = request.get_json()
         if not data:
             return jsonify({"error": "No JSON data provided"}), 400
         logging.debug(f"Received registration data: {data}")  # Log incoming data
         print(f"Received registration data: {data}")
+        name = data.get('name', '').strip()
         email = data.get('email', '').lower().strip()
         password = data.get('password', '').strip()
         confirm_password = data.get('confirmPassword', '').strip()  # <-- FIXED
@@ -1198,7 +1214,7 @@ def register():
         shared_secret = get_latest_env('SHARED_2FA_SECRET')    # Reloads env variables
 
         # Validate input
-        if not all([email, password, confirm_password]):
+        if not all([name, email, password, confirm_password]):
             logging.error("All fields are required.")
             return jsonify({"error": "All fields are required"}), 400
 
@@ -1214,10 +1230,12 @@ def register():
         
         # Verify 2FA code
         if not is_first_user:
+            if not two_fa_code:
+                return jsonify({"error": "2FA code is required"}), 400
             totp = pyotp.TOTP(shared_secret)
             if not totp.verify(two_fa_code, valid_window=1):
                 logging.error("Invalid 2FA code.")
-                conn.close
+                conn.close()
                 return jsonify({"error": "Invalid 2FA code"}), 400
 
         # Check if email exists
@@ -1230,18 +1248,20 @@ def register():
         # Create user
         salt = uuid.uuid4().hex
         created_at = datetime.now()
-        is_first_user = 0
+        # Regular users are not admins
+        is_admin = 0
         has_verified_2fa = 1
         
         cursor.execute("""
             INSERT INTO users 
-            (email, password_hash, salted_password, is_admin, has_verified_2fa, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?)
+            (name, email, password_hash, salted_password, is_admin, has_verified_2fa, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
+            name,
             email,
             encrypt_pw(salt, password),
             salt,
-            is_first_user,
+            is_admin,
             has_verified_2fa,
             created_at
         ))
@@ -1263,88 +1283,42 @@ def register():
 def setup():
     try:
         data = request.get_json()
-        logging.debug(f"Received registration data: {data}")  # Log incoming data
-        print(f"Received registration data: {data}")
         email = data.get('email', '').lower().strip()
-        password = data.get('password', '').strip()
-        confirm_password = data.get('confirmPassword', '').strip()  # <-- FIXED
-        #two_fa_code = data.get('twoFACode', '').strip()
 
-        shared_secret = get_latest_env('SHARED_2FA_SECRET')     # Reloads env variables
+        if not email:
+            # Email is needed for the provisioning URI
+            return jsonify({"error": "Email is required for 2FA setup"}), 400
 
-        # Validate input
-        if not all([email, password, confirm_password]):
-            logging.error("All fields are required.")
-            return jsonify({"error": "All fields are required"}), 400
-
-        # Check if first registration
-        #is_first_user = False
         conn = get_db_connection()
         cursor = conn.cursor()
-
-        # Check if any user exists
-        cursor.execute("SELECT COUNT(*) FROM users")
-        user_count = cursor.fetchone()[0]
-        is_first_user = user_count == 0
-
-        # Shared secret logic
-        shared_secret = os.getenv('SHARED_2FA_SECRET')
-        if is_first_user:
-            if not shared_secret:
-                shared_secret = pyotp.random_base32()
-                update_env_secret(shared_secret)
-                is_first_user = 1
-                logging.debug(f"First user detected. Shared secret generated: {shared_secret}")
-        else:
-            if not shared_secret:
-                is_first_user = 0
-                logging.error("Shared 2FA secret missing for non-initial registration.")
-                return jsonify({"error": "Server configuration error"}), 500
-
-
-        # Create user
-        salt = uuid.uuid4().hex
-        created_at = datetime.now()
-        has_verified_2fa = 0
-        
-        cursor.execute("""
-            INSERT INTO users 
-            (email, password_hash, SALTED_PASSWORD, is_admin, has_verified_2fa, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            email,
-            encrypt_pw(salt, password),
-            salt,
-            is_first_user,
-            has_verified_2fa,
-            created_at
-        ))
-
-        conn.commit()
-        #conn.close()
-        logging.info(f"User {email} registered successfully. Admin: {is_first_user}")
-
-        # Return provisioning URI if admin
-        totp = pyotp.TOTP(shared_secret)
-        qr_url = totp.provisioning_uri(name=email, issuer_name="FYP")   # Change issuer name before deploying
-
-        return jsonify({
-            "success": True,
-            "isAdmin": is_first_user,
-            "qrUrl": qr_url,
-            "manualCode": shared_secret,
-            "message": "Admin created" if is_first_user else "User registered"
-        }), 201
-
-    except pyodbc.Error as e:
-        logging.error(f"Database error: {str(e)}")
-        return jsonify({"error": f"Database error: {str(e)}"}), 500
-    except Exception as e:
-        logging.error(f"Server error: {str(e)}")
-        return jsonify({"error": f"Server error: {str(e)}"}), 500
-
-    finally:
+        cursor.execute("SELECT COUNT(*) FROM users WHERE IS_ADMIN = 1")
+        admin_count = cursor.fetchone()[0]
         conn.close()
+
+        is_first_user = admin_count == 0
+        
+        secret = os.getenv('SHARED_2FA_SECRET')
+        if is_first_user and not secret:
+            # This is the very first admin setup, generate a new secret
+            secret = pyotp.random_base32()
+        elif not secret:
+            # This should not happen if an admin already exists, but as a fallback
+            logging.error("SHARED_2FA_SECRET not found for a new user setup when admin exists.")
+            return jsonify({"error": "Server 2FA not configured."}), 500
+
+        totp = pyotp.TOTP(secret)
+        qr_url = totp.provisioning_uri(name=email, issuer_name="FYP")
+
+        # Return the details needed for frontend 2FA setup
+        return jsonify({
+            "qrUrl": qr_url,
+            "manualCode": secret,
+            "secret": secret  # Pass the secret to the client to be returned for verification
+        }), 200
+
+    except Exception as e:
+        logging.error(f"Error in /api/setup (2FA initiation): {str(e)}")
+        return jsonify({"error": "Server error during 2FA initiation"}), 500
 
 @app.route('/api/students', methods=['GET'])
 def get_students_info():
@@ -1440,26 +1414,75 @@ def update_student_scores():
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        for course_code, attempts in courses.items():
-            attempt1, attempt2, attempt3 = attempts
+        for course_code, new_attempts in courses.items():
+            new_attempt1, new_attempt2, new_attempt3 = new_attempts
             
-            # Check if a record exists
-            cursor.execute("SELECT 1 FROM STUDENT_SCORE WHERE MATRIC_NO = ? AND COURSE_CODE = ?", (matric_no, course_code))
-            exists = cursor.fetchone()
+            # Fetch current record to compare
+            cursor.execute(
+                """
+                SELECT ATTEMPT_1, ATTEMPT_2, ATTEMPT_3,
+                       A1_UPDATED_AT, A2_UPDATED_AT, A3_UPDATED_AT
+                FROM STUDENT_SCORE
+                WHERE MATRIC_NO = ? AND COURSE_CODE = ?
+                """,
+                (matric_no, course_code)
+            )
+            current_record = cursor.fetchone()
 
-            if exists:
-                cursor.execute("""
+            if current_record:
+                current_attempt1, current_attempt2, current_attempt3, \
+                current_a1_updated_at, current_a2_updated_at, current_a3_updated_at = current_record
+
+                update_set_parts = []
+                update_values = []
+
+                # Always include all attempts in the SET clause, but only update _UPDATED_AT if changed
+                update_set_parts.append("ATTEMPT_1 = ?")
+                update_values.append(new_attempt1)
+                if str(new_attempt1) != str(current_attempt1):
+                    update_set_parts.append("A1_UPDATED_AT = GETDATE()")
+                else:
+                    update_set_parts.append("A1_UPDATED_AT = ?") # Keep existing timestamp
+                    update_values.append(current_a1_updated_at)
+
+                update_set_parts.append("ATTEMPT_2 = ?")
+                update_values.append(new_attempt2)
+                if str(new_attempt2) != str(current_attempt2):
+                    update_set_parts.append("A2_UPDATED_AT = GETDATE()")
+                else:
+                    update_set_parts.append("A2_UPDATED_AT = ?")
+                    update_values.append(current_a2_updated_at)
+
+                update_set_parts.append("ATTEMPT_3 = ?")
+                update_values.append(new_attempt3)
+                if str(new_attempt3) != str(current_attempt3):
+                    update_set_parts.append("A3_UPDATED_AT = GETDATE()")
+                else:
+                    update_set_parts.append("A3_UPDATED_AT = ?")
+                    update_values.append(current_a3_updated_at)
+
+                update_query = f"""
                     UPDATE STUDENT_SCORE
-                    SET ATTEMPT_1 = ?, ATTEMPT_2 = ?, ATTEMPT_3 = ?, A1_UPDATED_AT = GETDATE(), A2_UPDATED_AT = GETDATE(), A3_UPDATED_AT = GETDATE()
+                    SET {', '.join(update_set_parts)}
                     WHERE MATRIC_NO = ? AND COURSE_CODE = ?
-                """, (attempt1, attempt2, attempt3, matric_no, course_code))
+                """
+                final_params = update_values + [matric_no, course_code]
+                cursor.execute(update_query, final_params)
             else:
                 # This case should ideally not happen if the student was created correctly
                 # but as a fallback, we can insert.
+                # For insert, all updated_at fields are set to GETDATE() if the attempt is provided, else NULL
+                today = datetime.now()
                 cursor.execute("""
                     INSERT INTO STUDENT_SCORE (MATRIC_NO, COURSE_CODE, ATTEMPT_1, ATTEMPT_2, ATTEMPT_3, A1_UPDATED_AT, A2_UPDATED_AT, A3_UPDATED_AT)
-                    VALUES (?, ?, ?, ?, ?, GETDATE(), GETDATE(), GETDATE())
-                """, (matric_no, course_code, attempt1, attempt2, attempt3))
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    matric_no, course_code, new_attempt1, new_attempt2, new_attempt3,
+                    today if new_attempt1 is not None else None,
+                    today if new_attempt2 is not None else None,
+                    today if new_attempt3 is not None else None
+                ))
+
 
 
         conn.commit()
@@ -1635,7 +1658,7 @@ def update_student(student_id):
         conn.autocommit = False
 
         if is_matric_change:
-            cursor.execute("ALTER TABLE STUDENT_SCORE NOCHECK CONSTRAINT FK_Student_Score")
+            cursor.execute("ALTER TABLE STUDENT_SCORE NOCHECK CONSTRAINT FK_Student_Score_Students")
 
         # Prepare and execute the update for the STUDENTS table
         update_fields = []
@@ -1659,7 +1682,7 @@ def update_student(student_id):
             cursor.execute("UPDATE STUDENT_SCORE SET MATRIC_NO = ? WHERE MATRIC_NO = ?", (new_matric_no, original_matric_no))
             
             # Re-enable the foreign key constraint
-            cursor.execute("ALTER TABLE STUDENT_SCORE CHECK CONSTRAINT FK_Student_Score")
+            cursor.execute("ALTER TABLE STUDENT_SCORE CHECK CONSTRAINT FK_Student_Score_Students")
 
         conn.commit()
         return jsonify({'message': 'Student updated successfully'}), 200
@@ -1674,41 +1697,80 @@ def update_student(student_id):
             conn.autocommit = True
             cursor.close()
             conn.close()
-
+    
 @app.route('/api/verify-2fa-setup', methods=['POST'])
 def verify_admin_2fa_setup():
     try:
-        data = request.get_json(force=True)
-        email = data.get('email', '').strip().lower()
+        data = request.get_json()
+        name = data.get('name', '').strip()
+        email = data.get('email', '').lower().strip()
+        password = data.get('password', '').strip()
+        # confirm_password is validated on client, not needed here
         code = data.get('code', '').strip()
+        secret = data.get('secret', '').strip()
 
-        if not email or not code:
-            return jsonify({"error:" "Email and 2FA code are required"}), 400
-        
-        shared_secret = os.getenv('SHARED_2FA_SECRET')
-        if not shared_secret:
-            return jsonify({"error": "2FA secret not initialized"}), 500
-        
-        totp = pyotp.TOTP(shared_secret)
+        if not all([name, email, password, code, secret]):
+            return jsonify({"error": "Missing required fields for final setup."}), 400
+
+        # Verify the 2FA code first
+        totp = pyotp.TOTP(secret)
         if not totp.verify(code, valid_window=1):
             return jsonify({"error": "Invalid 2FA code"}), 400
-        
-        # Update verification status in db
+
+        # --- Code is valid, proceed with user creation ---
         conn = get_db_connection()
         cursor = conn.cursor()
+        
+        # Double-check if an admin already exists to prevent race conditions
+        cursor.execute("SELECT COUNT(*) FROM users WHERE IS_ADMIN = 1")
+        admin_count = cursor.fetchone()[0]
+        is_first_user = admin_count == 0
+
+        # Security check: if not the first user, the secret from client must match env
+        if not is_first_user:
+            env_secret = os.getenv('SHARED_2FA_SECRET')
+            if not env_secret or env_secret != secret:
+                return jsonify({"error": "Invalid 2FA secret."}), 400
+        
+        # Check if email is already registered
+        cursor.execute("SELECT email FROM users WHERE email = ?", (email,))
+        if cursor.fetchone():
+            conn.close()
+            return jsonify({"error": "Email already registered"}), 409
+
+        # If this is the first admin, persist the new secret to the .env file
+        if is_first_user:
+            update_env_secret(secret)
+
+        # Create the user
+        salt = uuid.uuid4().hex
+        created_at = datetime.now()
+        
         cursor.execute("""
-            UPDATE USERS SET HAS_VERIFIED_2FA = 1 
-            WHERE EMAIL = ?
-        """, (email,))
+            INSERT INTO users 
+            (name, email, password_hash, SALTED_PASSWORD, is_admin, has_verified_2fa, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            name,
+            email,
+            encrypt_pw(salt, password),
+            salt,
+            1,  # The user being set up is the admin
+            1,  # 2FA is verified at this point
+            created_at
+        ))
         conn.commit()
         conn.close()
 
-        return jsonify({"message": "2FA verified successfully"}), 200
+        return jsonify({"message": "Admin account created successfully!"}), 201
 
     except Exception as e:
-        return jsonify({"error": f"Server error: {str(e)}"}), 500
-
-# --- Admin Routes ---
+        logging.error(f"Error in /api/verify-2fa-setup (user creation): {str(e)}")
+        if 'conn' in locals() and conn:
+            conn.close()
+        return jsonify({"error": "Server error during account finalization"}), 500
+    
+    # --- Admin Routes ---
 
 @app.route('/api/admin/student-statuses', methods=['GET'])
 @jwt_required()
@@ -1797,6 +1859,53 @@ def api_delete_program(program_code):
         return jsonify({'message': 'Program deleted successfully'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# --- Lecturer Routes ---
+
+@app.route('/api/admin/lecturers', methods=['GET'])
+@jwt_required()
+def api_get_all_lecturers():
+    try:
+        lecturers = get_all_lecturers()
+        return jsonify(lecturers)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/lecturers', methods=['POST'])
+@jwt_required()
+def api_add_lecturer():
+    try:
+        data = request.get_json()
+        lecturer_name = data.get('lecturer_name')
+        if not lecturer_name:
+            return jsonify({'error': 'lecturer_name is required'}), 400
+        add_lecturer(lecturer_name)
+        return jsonify({'message': 'Lecturer added successfully'}), 201
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/lecturers/<string:lecturer_name>', methods=['PUT'])
+@jwt_required()
+def api_update_lecturer(lecturer_name):
+    try:
+        data = request.get_json()
+        new_lecturer_name = data.get('new_lecturer_name')
+        if not new_lecturer_name:
+            return jsonify({'error': 'new_lecturer_name is required'}), 400
+        update_lecturer(lecturer_name, new_lecturer_name)
+        return jsonify({'message': 'Lecturer updated successfully'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/lecturers/<string:lecturer_name>', methods=['DELETE'])
+@jwt_required()
+def api_delete_lecturer(lecturer_name):
+    try:
+        deactivate_lecturer(lecturer_name)
+        return jsonify({'message': 'Lecturer deactivated successfully'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 
 @app.route('/api/students/status-counts', methods=['GET'])

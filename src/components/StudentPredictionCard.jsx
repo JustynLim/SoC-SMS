@@ -218,10 +218,10 @@ const StudentPredictionCard = ({ matricNo, studentStatus }) => {
           </Grid>
           <Grid item xs={6}>
             <Typography variant="body2" color="textSecondary">
-              First Attempt Pass Rate
+              Cumulative Average
             </Typography>
             <Typography variant="body1" fontWeight="bold">
-              {(prediction.academic_progress.first_attempt_pass_rate * 100).toFixed(1)}%
+              {prediction.academic_progress.avg_final_score?.toFixed(1) || 'N/A'}
             </Typography>
           </Grid>
           <Grid item xs={6}>

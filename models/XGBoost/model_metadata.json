@@ -1,10 +1,9 @@
 {
-  "timestamp": "20251028_033631",
-  "model_type": "Logistic Regression",
-  "total_samples": 70,
-  "on_time_count": 67,
+  "timestamp": "20251014_224843",
+  "total_samples": 106,
+  "on_time_count": 103,
   "late_count": 3,
-  "auc": 1.0,
+  "auc": 0.993527508090615,
   "calibrated": false,
   "features": [
     "entry_year_level",
@@ -31,6 +30,5 @@
     "third_attempt_rate",
     "resit_success_rate"
   ],
-  "feature_count": 23,
-  "scaled": true
+  "feature_count": 23
 }

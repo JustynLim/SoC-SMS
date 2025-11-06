@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import Course_Structure from "../components/CourseStructure";
 import AddCourseModal from "../components/AddCourseModal";
 import CourseStructureRow from "../components/CourseStructureRow"; // Import the new row component
@@ -10,11 +10,23 @@ import Sidebar from "../components/Sidebar"
 export default function CourseStructurePage() {
   const { data, loading, error, setData } = Course_Structure();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [lecturers, setLecturers] = useState([]);
+
+  useEffect(() => {
+    const fetchLecturers = async () => {
+      try {
+        const res = await api.get('/admin/lecturers');
+        setLecturers(res.data);
+      } catch (err) {
+        console.error("Failed to fetch lecturers:", err);
+      }
+    };
+    fetchLecturers();
+  }, []);
 
   const refetchCourses = useCallback(() => {
-    fetch("http://localhost:5001/api/course-structure")
-      .then(res => res.json())
-      .then(newData => setData(newData))
+    api.get("/course-structure")
+      .then(res => setData(res.data))
       .catch(err => console.error("Refetch failed:", err));
   }, [setData]);
 
@@ -210,6 +222,7 @@ export default function CourseStructurePage() {
                         onUpdate={handleUpdateCourse}
                         onDelete={handleDeleteCourse}
                         getCellValue={getCellValue}
+                        lecturers={lecturers}
                       />
                     ))}
                   </React.Fragment>

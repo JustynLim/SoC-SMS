@@ -1,4 +1,4 @@
-# src/routes/predictions.py
+# Flask API endpoint to expose prediction function
 from flask import Blueprint, jsonify, request
 import pandas as pd
 from src.services.graduation_prediction import predict_graduation, get_at_risk_students
@@ -6,6 +6,7 @@ from src.services.graduation_prediction import predict_graduation, get_at_risk_s
 # Create blueprint
 prediction_bp = Blueprint('predictions', __name__, url_prefix='/api/predictions')
 
+# Individual students (for details page
 @prediction_bp.route('/student/<matric_no>', methods=['GET'])
 def predict_single_student(matric_no):
     """Predict graduation for a single student"""
@@ -25,11 +26,12 @@ def predict_single_student(matric_no):
         'academic_progress': {
             'total_courses': int(student['total_courses']),
             'courses_passed_first_attempt': int(student['courses_passed_first_attempt']),
-            'courses_needing_resits': int(student['total_courses_needing_resits']),
+            'courses_needing_resits': int(student['courses_still_failing']),
             'courses_with_2_attempts': int(student['courses_with_2_attempts']),
             'courses_with_3_attempts': int(student['courses_with_3_attempts']),
             'total_first_attempt_failures': int(student['total_first_attempt_failures']),
             'avg_first_attempt_score': round(float(student['avg_first_attempt_score']), 2) if pd.notna(student['avg_first_attempt_score']) else None,
+            'avg_final_score': round(float(student['avg_final_score']), 2) if pd.notna(student['avg_final_score']) else None,
             'first_attempt_pass_rate': round(float(student['first_attempt_pass_rate']), 3) if pd.notna(student['first_attempt_pass_rate']) else 0,
             'resit_rate': round(float(student['resit_rate']), 3) if pd.notna(student['resit_rate']) else 0,
         },
@@ -44,7 +46,7 @@ def predict_single_student(matric_no):
     
     return jsonify(response), 200
 
-
+# All students (for dashboard)
 @prediction_bp.route('/all-students', methods=['GET'])
 def predict_all_students():
     """Predict graduation for all active students"""
@@ -61,13 +63,13 @@ def predict_all_students():
     for _, student in results.iterrows():
         predictions.append({
             'matric_no': student['MATRIC_NO'],
-            'name': student['NAME'],
+            'name': student['STUDENT_NAME'],
             'cohort': str(student['COHORT']),
             'entry_year_level': int(student['entry_year_level']),
             'prediction_label': student['prediction_label'],
             'probability_on_time': round(float(student['prob_on_time']), 3),
             'risk_level': student['risk_level'],
-            'total_resits': int(student['total_courses_needing_resits']),
+            'total_resits': int(student['courses_still_failing']),
             'first_attempt_failures': int(student['total_first_attempt_failures']),
             'avg_first_attempt_score': round(float(student['avg_first_attempt_score']), 2) if pd.notna(student['avg_first_attempt_score']) else None
         })
@@ -110,11 +112,11 @@ def get_at_risk():
     for _, student in at_risk.iterrows():
         students.append({
             'matric_no': student['MATRIC_NO'],
-            'name': student['NAME'],
+            'name': student['STUDENT_NAME'],
             'cohort': str(student['COHORT']),
             'entry_year_level': int(student['entry_year_level']),
             'total_courses': int(student['total_courses']),
-            'total_resits': int(student['total_courses_needing_resits']),
+            'total_resits': int(student['courses_still_failing']),
             'first_attempt_failures': int(student['total_first_attempt_failures']),
             'avg_first_attempt_score': round(float(student['avg_first_attempt_score']), 2) if pd.notna(student['avg_first_attempt_score']) else None,
             'probability_on_time': round(float(student['prob_on_time']), 3),

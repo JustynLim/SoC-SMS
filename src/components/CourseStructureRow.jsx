@@ -23,7 +23,7 @@ const EditableCell = ({ value, onChange, name, type = 'text', options = [] }) =>
   );
 };
 
-const CourseStructureRow = ({ course, columns, columnMapping, onUpdate, onDelete, shouldCenter, getCellValue }) => {
+const CourseStructureRow = ({ course, columns, columnMapping, onUpdate, onDelete, shouldCenter, getCellValue, lecturers }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editedCourse, setEditedCourse] = useState({ ...course });
 
@@ -67,6 +67,10 @@ const CourseStructureRow = ({ course, columns, columnMapping, onUpdate, onDelete
       const labHrs = extractFirstNumber(editedCourse.LAB_HR_WK) || 0;
       const blHrs = extractFirstNumber(editedCourse.BL_HR_WK) || 0;
       return lectHrs + tutHrs + labHrs + blHrs;
+    }
+
+    if (colKey === 'LECTURER') {
+      return <EditableCell name={colKey} value={value} onChange={handleEditChange} type="select" options={['- Unassigned -', ...lecturers]} />;
     }
 
     // Define dropdown options for specific fields

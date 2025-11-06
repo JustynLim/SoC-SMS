@@ -4,6 +4,7 @@ import isEmail from 'validator/lib/isEmail';
 
 export default function Register() {
   const [form, setForm] = useState({
+    name: '',
     email: '',
     password: '',
     confirmPassword: '',
@@ -53,6 +54,7 @@ export default function Register() {
 
     const validate = () => {
     const newErrors = {};
+    if (!form.name) newErrors.name = 'Name is required';
     if (!isEmail(form.email)) newErrors.email = 'Enter a valid email';
     if (!form.password) newErrors.password = 'Password is required';
     if (form.password !== form.confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
@@ -76,59 +78,6 @@ export default function Register() {
       setIsLoading(false);
       return;
     }
-
-    //const requestData = {...form};
-
-    // if (isFirstUser){
-    //     delete requestData.twoFACode;
-    // }
-
-  //   try {
-  //     const response = await fetch('http://localhost:5001/api/register', {
-  //       method: 'POST',
-  //       headers: { 'Content-Type': 'application/json' },
-  //       body: JSON.stringify(requestData)
-  //     });
-
-  //     if(!response.ok){
-  //       const errorData = await response.json().catch(() => ({}));
-  //       throw new Error(data.error || "Registration failed (77)");
-  //     }
-
-  //     const text = await response.text(); // Read as txt 1st
-  //     console.log(`Status: ${response.status}`,`Response text: ${text}`)
-
-  //     let data = {};
-  //     try {
-  //       data = JSON.parse(text); // Try to parse JSON
-  //     } 
-  //     catch {
-  //       throw new Error('Invalid server response (not JSON)');
-  //     }
-
-  //     //const data = await res.json();
-
-  //     if (!response.ok) throw new Error(data.error || 'Registration failed');
-
-  //     if (data.isAdmin) {
-  //       setAdminSetupInfo({
-  //         qrUrl: data.qrUrl,
-  //         manualCode: data.manualCode
-  //       });
-  //     }
-
-  //     setRegistrationSuccess(true);
-      
-  //   //   if (!data.isAdmin){
-  //   //   setTimeout(() => navigate('/login'), 4000);
-  //   //   }
-  //   } 
-    
-  //   catch (err) {
-  //     setErrors({ api: err.message });
-  //     console.error(`Registration error: ${err.message}`);
-  //   }
-  // };
 
       try {
       const response = await fetch('http://localhost:5001/api/register', {
@@ -182,6 +131,21 @@ export default function Register() {
 
         {!registrationSuccess && (
           <form onSubmit={handleSubmit}>
+            <div>
+              <input
+                type="text"
+                name="name"
+                placeholder="Name"
+                value={form.name}
+                onChange={handleChange}
+                className={`login-input ${errors.name ? 'error' : ''}`}
+              />
+              {errors.name && (
+                <p className="error-message">
+                  {errors.name}
+                </p>
+              )}
+            </div>
             <div>
               <input
                 type="email"

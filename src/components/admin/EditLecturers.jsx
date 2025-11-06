@@ -5,27 +5,26 @@ import {
     IconButton, Dialog, DialogActions, DialogContent, DialogTitle, CircularProgress,
     Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Fab
 } from '@mui/material';
-import { Edit, Delete, Add } from '@mui/icons-material';
+import { Edit, Archive, Add } from '@mui/icons-material';
 
-const EditPrograms = () => {
-    const [programs, setPrograms] = useState([]);
+const EditLecturers = () => {
+    const [lecturers, setLecturers] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
     const [open, setOpen] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
-    const [currentProgram, setCurrentProgram] = useState(null);
-    const [newProgramCode, setNewProgramCode] = useState('');
+    const [currentLecturer, setCurrentLecturer] = useState(null);
+    const [newLecturerName, setNewLecturerName] = useState('');
 
-    const fetchPrograms = async () => {
+    const fetchLecturers = async () => {
         try {
-            const res = await api.get('/admin/programs');
-            setPrograms(res.data);
+            const res = await api.get('/admin/lecturers');
+            setLecturers(res.data);
         } catch (err) {
             if (err.response && err.response.status === 401) {
                 setError('Session expired. Please log in again.');
-                // The interceptor in api.js should handle redirection
             } else {
-                setError('Failed to fetch programs.');
+                setError('Failed to fetch lecturers.');
             }
         } finally {
             setIsLoading(false);
@@ -33,14 +32,14 @@ const EditPrograms = () => {
     };
 
     useEffect(() => {
-        fetchPrograms();
+        fetchLecturers();
     }, []);
 
-    const handleOpen = (program = null) => {
-        if (program) {
+    const handleOpen = (lecturer = null) => {
+        if (lecturer) {
             setIsEditing(true);
-            setCurrentProgram(program);
-            setNewProgramCode(program);
+            setCurrentLecturer(lecturer);
+            setNewLecturerName(lecturer);
         } else {
             setIsEditing(false);
         }
@@ -49,36 +48,36 @@ const EditPrograms = () => {
 
     const handleClose = () => {
         setOpen(false);
-        setCurrentProgram(null);
-        setNewProgramCode('');
+        setCurrentLecturer(null);
+        setNewLecturerName('');
         setIsEditing(false);
     };
 
     const handleSave = async () => {
         try {
             if (isEditing) {
-                await api.put(`/admin/programs/${currentProgram}`,
-                    { new_program_code: newProgramCode }
+                await api.put(`/admin/lecturers/${currentLecturer}`,
+                    { new_lecturer_name: newLecturerName }
                 );
             } else {
-                await api.post('/admin/programs',
-                    { program_code: newProgramCode }
+                await api.post('/admin/lecturers',
+                    { lecturer_name: newLecturerName }
                 );
             }
-            fetchPrograms();
+            fetchLecturers();
             handleClose();
         } catch (err) {
-            setError('Failed to save program.');
+            setError('Failed to save lecturer.');
         }
     };
 
-    const handleDelete = async (program) => {
-        if (window.confirm(`Are you sure you want to delete the program "${program}"?`)) {
+    const handleDelete = async (lecturer) => {
+        if (window.confirm(`Are you sure you want to deactivate the lecturer "${lecturer}"? This will remove them from the list of available lecturers for new courses, but will not affect existing records.`)) {
             try {
-                await api.delete(`/admin/programs/${program}`);
-                fetchPrograms();
+                await api.delete(`/admin/lecturers/${lecturer}`);
+                fetchLecturers();
             } catch (err) {
-                setError('Failed to delete program.');
+                setError('Failed to deactivate lecturer.');
             }
         }
     };
@@ -89,7 +88,7 @@ const EditPrograms = () => {
 
     return (
         <Box>
-            <Typography variant="h6" gutterBottom>Programs - Manage different types of course codes available (e.g. BCSCUN)</Typography>
+            <Typography variant="h6" gutterBottom>Lecturers - Manage lecturers available</Typography>
 
             <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
                 {isLoading ? (
@@ -99,29 +98,29 @@ const EditPrograms = () => {
                         <Table>
                             <TableHead>
                                 <TableRow>
-                                    <TableCell sx={{ borderRight: '1px solid #eee', fontWeight: 'bold' }}>Program Code</TableCell>
+                                    <TableCell sx={{ borderRight: '1px solid #eee', fontWeight: 'bold' }}>Lecturer</TableCell>
                                     <TableCell align="center" sx={{ width: '150px', fontWeight: 'bold' }}>Actions</TableCell>
                                 </TableRow>
                             </TableHead>
                             <TableBody>
-                                {programs.length > 0 ? programs.map((program, index) => (
+                                {lecturers.length > 0 ? lecturers.map((lecturer, index) => (
                                     <TableRow key={index}>
                                         <TableCell component="th" scope="row" sx={{ borderRight: '1px solid #eee' }}>
-                                            {program}
+                                            {lecturer}
                                         </TableCell>
                                         <TableCell align="center">
-                                            <IconButton aria-label="edit" onClick={() => handleOpen(program)}>
+                                            <IconButton aria-label="edit" onClick={() => handleOpen(lecturer)}>
                                                 <Edit />
                                             </IconButton>
-                                            <IconButton aria-label="delete" onClick={() => handleDelete(program)}>
-                                                <Delete />
+                                            <IconButton aria-label="delete" onClick={() => handleDelete(lecturer)}>
+                                                <Archive />
                                             </IconButton>
                                         </TableCell>
                                     </TableRow>
                                 )) : (
                                     <TableRow>
                                         <TableCell colSpan={2} align="center">
-                                            No programs found. Please add one.
+                                            No lecturers found. Please add one.
                                         </TableCell>
                                     </TableRow>
                                 )}
@@ -132,17 +131,17 @@ const EditPrograms = () => {
             </Box>
 
             <Dialog open={open} onClose={handleClose}>
-                <DialogTitle>{isEditing ? 'Edit Program' : 'Add New Program'}</DialogTitle>
+                <DialogTitle>{isEditing ? 'Edit Lecturer' : 'Add New Lecturer'}</DialogTitle>
                 <DialogContent>
                     <TextField
                         autoFocus
                         margin="dense"
-                        label="Program Code"
+                        label="Lecturer Name"
                         type="text"
                         fullWidth
                         variant="standard"
-                        value={newProgramCode}
-                        onChange={(e) => setNewProgramCode(e.target.value)}
+                        value={newLecturerName}
+                        onChange={(e) => setNewLecturerName(e.target.value)}
                     />
                 </DialogContent>
                 <DialogActions>
@@ -154,7 +153,7 @@ const EditPrograms = () => {
             <Fab
                 color="primary"
                 aria-label="add"
-                title="Add Program"
+                title="AddLecturer"
                 sx={{
                     position: 'fixed',
                     bottom: 40,
@@ -168,4 +167,4 @@ const EditPrograms = () => {
     );
 };
 
-export default EditPrograms;
+export default EditLecturers;

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import axios from 'axios';
+import api from '../services/api';
 import FileUpload from './FileUpload';
 import '../App.css';
 import { MdPersonAddAlt1, MdPersonRemoveAlt1 } from "react-icons/md";
@@ -32,13 +32,8 @@ const Import = () => {
   useEffect(() => {
     const fetchPrograms = async () => {
       try {
-        const token = localStorage.getItem('token');
-        if (token) {
-          const res = await axios.get('http://localhost:5001/api/admin/programs', {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          setPrograms(res.data);
-        }
+        const res = await api.get('/admin/programs');
+        setPrograms(res.data);
       } catch (err) {
         console.error("Failed to fetch programs", err);
       }
@@ -111,9 +106,8 @@ const Import = () => {
       setIsProcessing(false);
       setMessage("");
 
-      const res = await axios.post("http://localhost:5001/api/import", formData, {
+      const res = await api.post("/import", formData, {
         headers: {
-          Authorization: `Bearer ${token}`,
           'Content-Type': 'multipart/form-data',
         },
         onUploadProgress: (progressEvent) => {
@@ -130,15 +124,9 @@ const Import = () => {
       setMessageType("success");
     } catch (err) {
       setProgress(0);
-      if (err.response && err.response.status === 401) {
-        setMessage("Session expired, please log in again");
-        setMessageType("error");
-        localStorage.removeItem("token");
-        window.location.href = "/login";
-      } else {
-        setMessage(err.response?.data?.error || `Error: ${err.message}`);
-        setMessageType("error");
-      }
+      // The interceptor in api.js should handle 401 errors and redirection
+      setMessage(err.response?.data?.error || `Error: ${err.message}`);
+      setMessageType("error");
     } finally {
       setIsProcessing(false);
     }

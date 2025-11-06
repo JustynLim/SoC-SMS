@@ -365,7 +365,7 @@ export default function StudentsScoresPage() {
     });
   }, [pivoted, debouncedQuery, nameIndex]);
 
-//   // Upload submit handler
+  // Upload submit handler
   const handleUploadSubmit = async () => {
     if (!selectedFile) {
       setUploadError("Please choose an .xlsm file first.");
@@ -394,8 +394,9 @@ export default function StudentsScoresPage() {
       setUploadOpen(false);
       setSelectedFile(null);
       setUploadError("");
-      // TODO: trigger data reload; simplest:
-      // window.location.reload();
+      // Trigger data reload
+      const response = await api.get('/students-scores');
+      setData(response.data);
     } catch (e) {
       setUploadError(e.message || "Upload failed");
     }
