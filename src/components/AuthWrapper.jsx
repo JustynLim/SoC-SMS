@@ -48,31 +48,29 @@ export function AuthWrapper() {
   }
 
   const isLoggedIn = !!localStorage.getItem('token');
-  const isSetupPath =
-    location.pathname === '/setup' ||
-    location.pathname === '/setup/' ||
-    location.pathname.startsWith('/setup/');
+  const isSetupPath = location.pathname.startsWith('/setup');
 
-  // If admin exists & setup complete, block /setup from being accessed
-  if (isSetupPath && adminExists && !shouldSetup && !needs2FASetup) {
-    if (!isLoggedIn) {
-      // not logged in = navigate to login
-      return <Navigate to="/login" replace />;
+  // 1. If setup is required, handle that first.
+  if (shouldSetup || needs2FASetup) {
+    // If we're not on the setup page, go there.
+    if (!isSetupPath) {
+      return <Navigate to="/setup" replace />;
     }
-    // logged in = navigate to previous page (or /home)
-    const last = sessionStorage.getItem('lastRoute') || '/home';
-    return <Navigate to={last} replace />;
+    // If we are on the setup page, allow it.
+    return <Outlet />;
   }
 
-  // If setup is required, force /setup (unless already there)
-  if ((shouldSetup || needs2FASetup) && !isSetupPath) {
-    return <Navigate to="/setup" replace />;
+  // 2. If we are here, setup is NOT required.
+  // If user tries to access /setup, redirect them.
+  if (isSetupPath) {
+      return <Navigate to="/home" replace />;
   }
 
-  // Auth check for protected routes
+  // 3. For all other pages, user must be logged in.
   if (!isLoggedIn) {
     return <Navigate to="/login" replace />;
   }
 
+  // 4. User is logged in, and setup is not required.
   return <Outlet />;
 }

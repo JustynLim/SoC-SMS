@@ -7,7 +7,7 @@ const RegistrationPage = () => {
   };
 
   return (
-    <div className="register-page-container">
+    <div className="login-page-container">
       <Register onFormSwitch={handleFormSwitch}/>
     </div>
   );

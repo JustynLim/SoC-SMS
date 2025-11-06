@@ -1,19 +1,79 @@
-import React from 'react'
-import './FileUpload.css'
+import React, { useState, useRef } from 'react';
+import './FileUpload.css';
+import { FaUpload } from 'react-icons/fa';
 
-const FileUpload = () => {
-    
-    const inputRef = useRef();
+const FileUpload = ({ onFileSelect, progress }) => {
+    const [file, setFile] = useState(null);
+    const [isDragOver, setIsDragOver] = useState(false);
+    const fileInputRef = useRef(null);
 
-    //
-    const [selectedFile, setSelectedFile] = useState(null);
-    const [progress, setProgess] = useState(0);
-    const [uploadStatus, setUploadStatus] = useState("select");
-    
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        setIsDragOver(true);
+    };
 
-    return(
-        <div>FileUpload</div>
-    )
-}
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        setIsDragOver(false);
+    };
 
-export default FileUpload
+    const handleDrop = (e) => {
+        e.preventDefault();
+        setIsDragOver(false);
+        const droppedFile = e.dataTransfer.files[0];
+        if (droppedFile) {
+            setFile(droppedFile);
+            onFileSelect(droppedFile);
+        }
+    };
+
+    const handleFileSelect = (e) => {
+        const selectedFile = e.target.files[0];
+        if (selectedFile) {
+            setFile(selectedFile);
+            onFileSelect(selectedFile);
+        }
+    };
+
+    const handleClick = () => {
+        fileInputRef.current.click();
+    };
+
+    return (
+        <div
+            className={`file-upload-container ${isDragOver ? 'drag-over' : ''}`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={handleClick}
+        >
+            <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+                style={{ display: 'none' }}
+                accept=".xls,.xlsx"
+            />
+            {file ? (
+                <div className="file-info">
+                    <p className="file-name">{file.name}</p>
+                    {progress > 0 && (
+                        <div className="progress-bar-container">
+                            <div
+                                className="progress-bar"
+                                style={{ width: `${progress}%` }}
+                            ></div>
+                        </div>
+                    )}
+                </div>
+            ) : (
+                <>
+                    <FaUpload className="upload-icon" />
+                    <p>Drag & drop a file here, or click to select a file</p>
+                </>
+            )}
+        </div>
+    );
+};
+
+export default FileUpload;

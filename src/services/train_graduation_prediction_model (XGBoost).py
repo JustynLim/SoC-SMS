@@ -1,29 +1,108 @@
 # train_graduation_prediction_model.py
-import os, sys
+import os,sys
 
 # Add project root to path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 sys.path.insert(0, project_root)
 
+# Import your existing database connection from Flask app
 from src.db.core import get_db_connection
 
 import pandas as pd
-import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler  # For feature scaling
-from sklearn.linear_model import LogisticRegression
 from sklearn.calibration import CalibratedClassifierCV
+from xgboost import XGBClassifier
 from sklearn.metrics import roc_auc_score, classification_report
 import joblib, json, logging
 from datetime import datetime
 
 logging.basicConfig(filename='model_training.log', level=logging.INFO)
 
-
 def extract_features_and_labels():
     """Query database to get features and labels for graduated students"""
     
     conn = get_db_connection()
+    
+    # query = """
+    # WITH student_entry_year AS (
+    #     SELECT 
+    #         MATRIC_NO,
+    #         CASE 
+    #             WHEN MAX(CASE WHEN ATTEMPT_1 = 'Exempted' THEN 1 ELSE 0 END) = 1 
+    #             THEN 2
+    #             ELSE 1
+    #         END AS entry_year_level,
+    #         CASE 
+    #             WHEN MAX(CASE WHEN ATTEMPT_1 = 'Exempted' THEN 1 ELSE 0 END) = 1 
+    #             THEN 2
+    #             ELSE 3
+    #         END AS expected_years
+    #     FROM STUDENT_SCORE
+    #     GROUP BY MATRIC_NO
+    # ),
+    
+    # student_features AS (
+    #     SELECT 
+    #         MATRIC_NO,
+    #         COUNT(DISTINCT COURSE_CODE) as total_courses,
+    #         SUM(CASE WHEN ATTEMPT_2 IS NOT NULL AND ATTEMPT_2 != '' THEN 1 ELSE 0 END) as resit_count_2,
+    #         SUM(CASE WHEN ATTEMPT_3 IS NOT NULL AND ATTEMPT_3 != '' THEN 1 ELSE 0 END) as resit_count_3,
+    #         SUM(CASE WHEN ATTEMPT_2 IS NOT NULL AND ATTEMPT_2 != '' THEN 1 ELSE 0 END) +
+    #         SUM(CASE WHEN ATTEMPT_3 IS NOT NULL AND ATTEMPT_3 != '' THEN 1 ELSE 0 END) as total_resits,
+    #         SUM(CASE WHEN ATTEMPT_1 LIKE 'R%%' THEN 1 ELSE 0 END) as deferred_courses,
+    #         COUNT(CASE WHEN ATTEMPT_1 NOT IN ('Exempted', '-', '') THEN 1 END) as courses_with_scores
+    #     FROM STUDENT_SCORE
+    #     GROUP BY MATRIC_NO
+    # ),
+    
+    # graduation_labels AS (
+    #     SELECT 
+    #         s.MATRIC_NO,
+    #         s.COHORT,
+    #         s.GRADUATED_ON,
+    #         sey.entry_year_level,
+    #         sey.expected_years,
+            
+    #         DATEPART(YEAR, s.COHORT) AS entry_year,
+    #         DATEPART(MONTH, s.COHORT) AS entry_month,
+            
+    #         -- FIX: Convert 2-digit year to 4-digit year (24 -> 2024)
+    #         2000 + CAST(SUBSTRING(s.GRADUATED_ON, 2, 2) AS INT) AS grad_year,
+    #         CAST(SUBSTRING(s.GRADUATED_ON, 5, 1) AS INT) AS grad_month,
+            
+    #         DATEPART(YEAR, DATEADD(YEAR, sey.expected_years, s.COHORT)) AS expected_grad_year,
+    #         DATEPART(MONTH, s.COHORT) AS expected_grad_month,
+            
+    #         -- Now comparing 4-digit years (2024 vs 2024, not 24 vs 2024)
+    #         CASE 
+    #             WHEN 2000 + CAST(SUBSTRING(s.GRADUATED_ON, 2, 2) AS INT) < DATEPART(YEAR, DATEADD(YEAR, sey.expected_years, s.COHORT)) THEN 1
+    #             WHEN 2000 + CAST(SUBSTRING(s.GRADUATED_ON, 2, 2) AS INT) = DATEPART(YEAR, DATEADD(YEAR, sey.expected_years, s.COHORT)) 
+    #                  AND CAST(SUBSTRING(s.GRADUATED_ON, 5, 1) AS INT) <= DATEPART(MONTH, s.COHORT) THEN 1
+    #             ELSE 0
+    #         END AS on_time
+            
+    #     FROM STUDENTS s
+    #     INNER JOIN student_entry_year sey ON s.MATRIC_NO = sey.MATRIC_NO
+    #     WHERE 
+    #         s.STUDENT_STATUS = 'Graduate'
+    #         AND s.GRADUATED_ON != '-'
+    #         AND s.GRADUATED_ON IS NOT NULL
+    # )
+    
+    # SELECT 
+    #     gl.*,
+    #     sf.total_courses,
+    #     sf.resit_count_2,
+    #     sf.resit_count_3,
+    #     sf.total_resits,
+    #     sf.deferred_courses,
+    #     sf.courses_with_scores,
+    #     CAST(sf.total_resits AS FLOAT) / NULLIF(sf.total_courses, 0) as resit_ratio,
+    #     CAST(sf.deferred_courses AS FLOAT) / NULLIF(sf.total_courses, 0) as deferral_ratio
+    # FROM graduation_labels gl
+    # INNER JOIN student_features sf ON gl.MATRIC_NO = sf.MATRIC_NO
+    # ORDER BY gl.MATRIC_NO
+    # """
 
     query = """
     WITH student_entry_year AS (
@@ -216,9 +295,8 @@ def extract_features_and_labels():
     print(f"Extracted {len(df)} training records")
     return df
 
-
 def train_model():
-    """Train and save the graduation prediction model using Logistic Regression"""
+    """Train and save the graduation prediction model"""
     
     df = extract_features_and_labels()
     
@@ -245,7 +323,7 @@ def train_model():
     else:
         use_calibration = True
     
-    # Feature set with course-level details
+    # UPDATED: Enhanced feature set with course-level details
     feature_cols = [
         # Basic
         'entry_year_level',
@@ -293,8 +371,6 @@ def train_model():
         print(f"\n⚠ Using all {len(df)} samples for training (no test set due to small sample size)")
         X_train, X_test = X, None
         y_train, y_test = y, None
-    
-    # Currently never enters this statement (insufficient data for late students)
     else:
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, stratify=y, random_state=42
@@ -302,51 +378,49 @@ def train_model():
     
     pos = y_train.sum()
     neg = (y_train == 0).sum()
+    scale_pos_weight = max(1.0, neg / max(1, pos))
     
     print(f"\nTraining samples: {len(X_train)}")
     if X_test is not None:
         print(f"Test samples: {len(X_test)}")
     print(f"Class balance - On-time: {pos}, Late: {neg}")
+    print(f"Scale weight: {scale_pos_weight:.2f}")
     
-    # Feature scaling for Logistic Regression (improves convergence and coefficient interpretation)
-    print("\nScaling features for Logistic Regression...")
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    if X_test is not None:
-        X_test_scaled = scaler.transform(X_test)
-    
-    lr = LogisticRegression(
-        max_iter=1000,              # Increased iterations for convergence
+    xgb = XGBClassifier(
+        objective='binary:logistic',
+        eval_metric='auc',
+        tree_method='hist',
         random_state=42,
-        class_weight='balanced',     # Handles class imbalance (equivalent to scale_pos_weight)
-        solver='lbfgs',             # Efficient solver for small datasets
-        penalty='l2',               # L2 regularization to prevent overfitting
-        C=1.0                       # Regularization strength (lower = stronger regularization)
+        n_estimators=200,
+        learning_rate=0.1,
+        max_depth=3,
+        scale_pos_weight=scale_pos_weight,
+        n_jobs=-1
     )
     
-    print("\nTraining Logistic Regression model...")
-    lr.fit(X_train_scaled, y_train)
+    print("\nTraining XGBoost model...")
+    xgb.fit(X_train, y_train)
     
     # Only calibrate if we have enough data
     if use_calibration and neg >= 3 and pos >= 3:
         print("Calibrating probabilities...")
         try:
             cv_folds = 2 if min(neg, pos) < 5 else 3
-            lr_cal = CalibratedClassifierCV(lr, method='sigmoid', cv=cv_folds)
-            lr_cal.fit(X_train_scaled, y_train)
-            final_model = lr_cal
+            xgb_cal = CalibratedClassifierCV(xgb, method='sigmoid', cv=cv_folds)
+            xgb_cal.fit(X_train, y_train)
+            final_model = xgb_cal
             print(f"✓ Calibration successful (cv={cv_folds})")
         except Exception as e:
             print(f"⚠ Calibration failed: {e}")
             print("Using uncalibrated model instead.")
-            final_model = lr
+            final_model = xgb
     else:
         print("⚠ Skipping calibration due to insufficient data")
-        final_model = lr
+        final_model = xgb
     
     # Evaluate
     if X_test is not None and y_test is not None:
-        y_pred_proba = final_model.predict_proba(X_test_scaled)[:, 1]
+        y_pred_proba = final_model.predict_proba(X_test)[:, 1]
         y_pred = (y_pred_proba >= 0.5).astype(int)
         
         auc = roc_auc_score(y_test, y_pred_proba)
@@ -358,7 +432,7 @@ def train_model():
         print(f"\nClassification Report:")
         print(classification_report(y_test, y_pred, target_names=['Late', 'On-time'], zero_division=0))
     else:
-        y_pred_proba = final_model.predict_proba(X_train_scaled)[:, 1]
+        y_pred_proba = final_model.predict_proba(X_train)[:, 1]
         y_pred = (y_pred_proba >= 0.5).astype(int)
         
         auc = roc_auc_score(y_train, y_pred_proba)
@@ -370,19 +444,14 @@ def train_model():
         print(f"\nClassification Report:")
         print(classification_report(y_train, y_pred, target_names=['Late', 'On-time'], zero_division=0))
     
-    # CHANGED: Feature coefficients instead of feature importance
-    # Get coefficients from base model (not calibrated wrapper)
-    base_model = lr if not use_calibration else lr
-    coefficients = base_model.coef_[0]
-    
+    # Feature importance
     feature_importance = pd.DataFrame({
         'feature': feature_cols,
-        'coefficient': coefficients,
-        'abs_coefficient': np.abs(coefficients)
-    }).sort_values('abs_coefficient', ascending=False)
+        'importance': xgb.feature_importances_
+    }).sort_values('importance', ascending=False)
     
-    print(f"\nTop 10 Most Important Features (by absolute coefficient):")
-    print(feature_importance[['feature', 'coefficient', 'abs_coefficient']].head(10).to_string(index=False))
+    print(f"\nTop 10 Most Important Features:")
+    print(feature_importance.head(10).to_string(index=False))
     
     logging.info(f"Model trained - AUC: {auc:.4f}, Samples: {len(df)}, Late: {late_count}")
     
@@ -391,50 +460,41 @@ def train_model():
     
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     model_path = f'models/graduation_model_{timestamp}.joblib'
-    scaler_path = f'models/scaler_{timestamp}.joblib'
     
-    # Save model, scaler, and feature columns
+    # Save models
     joblib.dump(final_model, model_path)
     joblib.dump(final_model, 'models/graduation_model_latest.joblib')
-    joblib.dump(scaler, scaler_path)  # NEW: Save scaler for deployment
-    joblib.dump(scaler, 'models/scaler_latest.joblib')
     joblib.dump(feature_cols, 'models/feature_columns.joblib')
     
     # Save metadata
     metadata = {
         'timestamp': timestamp,
-        'model_type': 'Logistic Regression',  # NEW: Document model type
         'total_samples': len(df),
         'on_time_count': int(on_time_count),
         'late_count': int(late_count),
         'auc': float(auc),
         'calibrated': use_calibration and neg >= 3 and pos >= 3,
         'features': feature_cols,
-        'feature_count': len(feature_cols),
-        'scaled': True  # NEW: Indicate features are scaled
+        'feature_count': len(feature_cols)
     }
     
     with open('models/model_metadata.json', 'w') as f:
         json.dump(metadata, f, indent=2)
     
-    # Save feature coefficients
-    feature_importance.to_csv(f'models/feature_coefficients_{timestamp}.csv', index=False)
+    # Save feature importance
+    feature_importance.to_csv(f'models/feature_importance_{timestamp}.csv', index=False)
     
     logging.info(f"Model saved to {model_path}")
     print(f"\n✓ Model saved to {model_path}")
     print(f"✓ Latest model: models/graduation_model_latest.joblib")
-    print(f"✓ Scaler saved to: {scaler_path}")
-    print(f"✓ Latest scaler: models/scaler_latest.joblib")
     print(f"✓ Metadata: models/model_metadata.json")
-    print(f"✓ Feature coefficients: models/feature_coefficients_{timestamp}.csv")
+    print(f"✓ Feature importance: models/feature_importance_{timestamp}.csv")
     
     return final_model, auc
-
 
 if __name__ == "__main__":
     print("=" * 60)
     print("GRADUATION PREDICTION MODEL TRAINING")
-    print("USING LOGISTIC REGRESSION")
     print("=" * 60)
     
     try:
@@ -443,8 +503,7 @@ if __name__ == "__main__":
             print("=" * 60)
             print(f"✓ TRAINING COMPLETE! Model AUC: {auc:.4f}")
             print("=" * 60)
-            print("\nNOTE: Model trained with Logistic Regression for interpretability.")
-            print("Features have been standardized for better coefficient interpretation.")
+            print("\nNOTE: Model trained with enhanced course-level features.")
             print("Performance will improve as more graduates are added to the system.")
         else:
             print("=" * 60)
@@ -456,3 +515,269 @@ if __name__ == "__main__":
         print(f"{'='*60}")
         logging.error(f"Training failed: {e}", exc_info=True)
         raise
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# # train_graduation_prediction_model.py
+# import sys
+# import os
+
+# # Add project root to path
+# project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+# sys.path.insert(0, project_root)
+
+# # Import your existing database connection from Flask app
+# from src.db.core import get_db_connection
+
+# import pandas as pd
+# from sklearn.model_selection import train_test_split
+# from sklearn.calibration import CalibratedClassifierCV
+# from xgboost import XGBClassifier
+# from sklearn.metrics import roc_auc_score, classification_report
+# import joblib
+# from datetime import datetime
+# import logging
+
+# logging.basicConfig(filename='model_training.log', level=logging.INFO)
+
+# def extract_features_and_labels():
+#     """Query database to get features and labels for graduated students"""
+    
+#     conn = get_db_connection()
+    
+#     query = """
+#     WITH student_entry_year AS (
+#         SELECT 
+#             MATRIC_NO,
+#             CASE 
+#                 WHEN MAX(CASE WHEN ATTEMPT_1 = 'Exempted' THEN 1 ELSE 0 END) = 1 
+#                 THEN 2
+#                 ELSE 1
+#             END AS entry_year_level,
+#             CASE 
+#                 WHEN MAX(CASE WHEN ATTEMPT_1 = 'Exempted' THEN 1 ELSE 0 END) = 1 
+#                 THEN 2
+#                 ELSE 3
+#             END AS expected_years
+#         FROM STUDENT_SCORE
+#         GROUP BY MATRIC_NO
+#     ),
+    
+#     student_features AS (
+#         SELECT 
+#             MATRIC_NO,
+#             COUNT(DISTINCT COURSE_CODE) as total_courses,
+#             SUM(CASE WHEN ATTEMPT_2 IS NOT NULL AND ATTEMPT_2 != '' THEN 1 ELSE 0 END) as resit_count_2,
+#             SUM(CASE WHEN ATTEMPT_3 IS NOT NULL AND ATTEMPT_3 != '' THEN 1 ELSE 0 END) as resit_count_3,
+#             SUM(CASE WHEN ATTEMPT_2 IS NOT NULL AND ATTEMPT_2 != '' THEN 1 ELSE 0 END) +
+#             SUM(CASE WHEN ATTEMPT_3 IS NOT NULL AND ATTEMPT_3 != '' THEN 1 ELSE 0 END) as total_resits,
+#             SUM(CASE WHEN ATTEMPT_1 LIKE 'R%%' THEN 1 ELSE 0 END) as deferred_courses,
+#             COUNT(CASE WHEN ATTEMPT_1 NOT IN ('Exempted', '-', '') THEN 1 END) as courses_with_scores
+#         FROM STUDENT_SCORE
+#         GROUP BY MATRIC_NO
+#     ),
+    
+#     graduation_labels AS (
+#         SELECT 
+#             s.MATRIC_NO,
+#             s.COHORT,
+#             s.GRADUATED_ON,
+#             sey.entry_year_level,
+#             sey.expected_years,
+            
+#             DATEPART(YEAR, s.COHORT) AS entry_year,
+#             DATEPART(MONTH, s.COHORT) AS entry_month,
+            
+#             -- FIX: Convert 2-digit year to 4-digit year (24 -> 2024)
+#             2000 + CAST(SUBSTRING(s.GRADUATED_ON, 2, 2) AS INT) AS grad_year,
+#             CAST(SUBSTRING(s.GRADUATED_ON, 5, 1) AS INT) AS grad_month,
+            
+#             DATEPART(YEAR, DATEADD(YEAR, sey.expected_years, s.COHORT)) AS expected_grad_year,
+#             DATEPART(MONTH, s.COHORT) AS expected_grad_month,
+            
+#             -- Now comparing 4-digit years (2024 vs 2024, not 24 vs 2024)
+#             CASE 
+#                 WHEN 2000 + CAST(SUBSTRING(s.GRADUATED_ON, 2, 2) AS INT) < DATEPART(YEAR, DATEADD(YEAR, sey.expected_years, s.COHORT)) THEN 1
+#                 WHEN 2000 + CAST(SUBSTRING(s.GRADUATED_ON, 2, 2) AS INT) = DATEPART(YEAR, DATEADD(YEAR, sey.expected_years, s.COHORT)) 
+#                      AND CAST(SUBSTRING(s.GRADUATED_ON, 5, 1) AS INT) <= DATEPART(MONTH, s.COHORT) THEN 1
+#                 ELSE 0
+#             END AS on_time
+            
+#         FROM STUDENTS s
+#         INNER JOIN student_entry_year sey ON s.MATRIC_NO = sey.MATRIC_NO
+#         WHERE 
+#             s.STUDENT_STATUS = 'Graduate'
+#             AND s.GRADUATED_ON != '-'
+#             AND s.GRADUATED_ON IS NOT NULL
+#     )
+    
+#     SELECT 
+#         gl.*,
+#         sf.total_courses,
+#         sf.resit_count_2,
+#         sf.resit_count_3,
+#         sf.total_resits,
+#         sf.deferred_courses,
+#         sf.courses_with_scores,
+#         CAST(sf.total_resits AS FLOAT) / NULLIF(sf.total_courses, 0) as resit_ratio,
+#         CAST(sf.deferred_courses AS FLOAT) / NULLIF(sf.total_courses, 0) as deferral_ratio
+#     FROM graduation_labels gl
+#     INNER JOIN student_features sf ON gl.MATRIC_NO = sf.MATRIC_NO
+#     ORDER BY gl.MATRIC_NO
+#     """
+    
+#     df = pd.read_sql(query, conn)
+#     conn.close()
+    
+#     logging.info(f"Extracted {len(df)} training records from database")
+#     print(f"Extracted {len(df)} training records")
+#     return df
+
+# def train_model():
+#     """Train and save the graduation prediction model"""
+    
+#     df = extract_features_and_labels()
+    
+#     if len(df) == 0:
+#         print("ERROR: No training data found!")
+#         return None, 0
+    
+#     print(f"\nTraining data shape: {df.shape}")
+#     print(f"On-time distribution:\n{df['on_time'].value_counts()}")
+    
+#     # Check if we have both classes
+#     on_time_count = df['on_time'].sum()
+#     late_count = len(df) - on_time_count
+    
+#     if late_count == 0:
+#         print("\n⚠ WARNING: No late graduates found! Cannot train binary classifier.")
+#         print("Need students who graduated late (on_time = 0) to train the model.")
+#         return None, 0
+    
+#     if late_count < 5 or on_time_count < 5:
+#         print(f"\n⚠ WARNING: Class imbalance detected!")
+#         print(f"On-time: {on_time_count}, Late: {late_count}")
+#         print("Model may not be reliable with limited examples of one class.")
+    
+#     feature_cols = [
+#         'entry_year_level', 'total_courses', 'resit_count_2', 'resit_count_3',
+#         'total_resits', 'deferred_courses', 'resit_ratio', 'deferral_ratio'
+#     ]
+    
+#     X = df[feature_cols].fillna(0)
+#     y = df['on_time']
+    
+#     X_train, X_test, y_train, y_test = train_test_split(
+#         X, y, test_size=0.2, stratify=y, random_state=42
+#     )
+    
+#     pos = y_train.sum()
+#     neg = (y_train == 0).sum()
+#     scale_pos_weight = max(1.0, neg / max(1, pos))
+    
+#     print(f"\nTraining samples: {len(X_train)}, Test samples: {len(X_test)}")
+#     print(f"Class balance - On-time: {pos}, Late: {neg}")
+#     print(f"Scale weight: {scale_pos_weight:.2f}")
+    
+#     xgb = XGBClassifier(
+#         objective='binary:logistic',
+#         eval_metric='auc',
+#         tree_method='hist',
+#         random_state=42,
+#         n_estimators=400,
+#         learning_rate=0.05,
+#         max_depth=4,
+#         scale_pos_weight=scale_pos_weight,
+#         n_jobs=-1
+#     )
+    
+#     print("\nTraining XGBoost model...")
+#     xgb.fit(X_train, y_train)
+    
+#     print("Calibrating probabilities...")
+#     xgb_cal = CalibratedClassifierCV(xgb, method='isotonic', cv=3)
+#     xgb_cal.fit(X_train, y_train)
+    
+#     # Evaluate on test set
+#     y_pred_proba = xgb_cal.predict_proba(X_test)[:, 1]
+#     y_pred = (y_pred_proba >= 0.5).astype(int)
+    
+#     auc = roc_auc_score(y_test, y_pred_proba)
+    
+#     print(f"\n{'='*60}")
+#     print(f"Model Performance:")
+#     print(f"{'='*60}")
+#     print(f"AUC-ROC: {auc:.4f}")
+#     print(f"\nClassification Report:")
+#     print(classification_report(y_test, y_pred, target_names=['Late', 'On-time']))
+    
+#     # Feature importance
+#     feature_importance = pd.DataFrame({
+#         'feature': feature_cols,
+#         'importance': xgb.feature_importances_
+#     }).sort_values('importance', ascending=False)
+    
+#     print(f"\nTop Features:")
+#     print(feature_importance.to_string(index=False))
+    
+#     logging.info(f"Model trained - AUC: {auc:.4f}")
+    
+#     # Create models directory if it doesn't exist
+#     os.makedirs('models', exist_ok=True)
+    
+#     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+#     model_path = f'models/graduation_model_{timestamp}.joblib'
+    
+#     # Save models
+#     joblib.dump(xgb_cal, model_path)
+#     joblib.dump(xgb_cal, 'models/graduation_model_latest.joblib')
+#     joblib.dump(feature_cols, 'models/feature_columns.joblib')
+    
+#     # Save feature importance for reference
+#     feature_importance.to_csv(f'models/feature_importance_{timestamp}.csv', index=False)
+    
+#     logging.info(f"Model saved to {model_path}")
+#     print(f"\n✓ Model saved to {model_path}")
+#     print(f"✓ Latest model: models/graduation_model_latest.joblib")
+    
+#     return xgb_cal, auc
+
+# if __name__ == "__main__":
+#     print("=" * 60)
+#     print("GRADUATION PREDICTION MODEL TRAINING")
+#     print("=" * 60)
+    
+#     try:
+#         model, auc = train_model()
+#         if model:
+#             print("=" * 60)
+#             print(f"✓ TRAINING COMPLETE! Model AUC: {auc:.4f}")
+#             print("=" * 60)
+#         else:
+#             print("=" * 60)
+#             print("✗ TRAINING FAILED - Insufficient data")
+#             print("=" * 60)
+#     except Exception as e:
+#         print(f"\n{'='*60}")
+#         print(f"ERROR during training: {e}")
+#         print(f"{'='*60}")
+#         logging.error(f"Training failed: {e}", exc_info=True)
+#         raise

@@ -4,6 +4,7 @@ import isEmail from 'validator/lib/isEmail';
 
 export const Setup = () => {
   const [form, setForm] = useState({
+    name: '',
     email: '',
     password: '',
     confirmPassword: '',
@@ -18,6 +19,7 @@ export const Setup = () => {
 
   const validate = () => {
     const newErrors = {};
+    if (!form.name) newErrors.name = 'Name is required';
     if (!isEmail(form.email)) newErrors.email = 'Enter a valid email';
     if (!form.password) newErrors.password = 'Password is required';
     if (form.password !== form.confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
@@ -34,40 +36,32 @@ export const Setup = () => {
 const handleRegister = async (e) => {
   e.preventDefault();
   if (!validate()) return;
-  setIsVerifying2FA(true); // Use this for registration loading state
+  setIsVerifying2FA(true);
 
   try {
+    // Call the modified /api/setup to get 2FA details
     const response = await fetch('http://localhost:5001/api/setup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form)
+      body: JSON.stringify({ email: form.email }) // Only email is needed now
     });
 
-    console.log('Raw response:', response); // Debug log
-
-    const data = await response.json().catch(() => {
-      throw new Error('Invalid JSON response');
-    });
-
-    console.log('Parsed data:', data); // Debug log
+    const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || 'Registration failed');
+      throw new Error(data.error || 'Failed to initiate 2FA setup');
     }
 
-    if (!data.qrUrl || !data.manualCode) {
-      throw new Error('Missing 2FA setup data in response');
-    }
-
-    // Ensure these are set together in one operation
+    // Store the received QR/code AND the secret for the next step
     setAdminSetupInfo({
       qrUrl: data.qrUrl,
-      manualCode: data.manualCode
+      manualCode: data.manualCode,
+      secret: data.secret 
     });
     setCurrentStep('setup2fa');
     
   } catch (err) {
-    console.error('Registration error:', err);
+    console.error('2FA initiation error:', err);
     setErrors({ api: err.message });
   } finally {
     setIsVerifying2FA(false);
@@ -78,15 +72,20 @@ const handleRegister = async (e) => {
   const handleVerify2FA = async () => {
     setIsVerifying2FA(true);
     try {
+      // Call the modified /api/verify-2fa-setup with all the data
       const response = await fetch('http://localhost:5001/api/verify-2fa-setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: form.email, code: admin2FACode })
+        body: JSON.stringify({ 
+            ...form, // includes name, email, password
+            code: admin2FACode,
+            secret: adminSetupInfo.secret 
+        })
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: "Verification failed" }));
-        throw new Error(errorData.error || 'Invalid 2FA code');
+        throw new Error(errorData.error || 'An error occurred during final setup.');
       }
 
       setCurrentStep('complete');
@@ -94,7 +93,7 @@ const handleRegister = async (e) => {
       
     } catch (error) {
       alert(error.message);
-      console.error('2FA verification error:', error);
+      console.error('Final setup error:', error);
     } finally {
       setIsVerifying2FA(false);
     }
@@ -114,6 +113,21 @@ const handleRegister = async (e) => {
             {errors.api && <p style={{ color: 'red' }}>{errors.api}</p>}
             
             <form onSubmit={handleRegister}>
+              <div>
+                <input
+                  type="text"
+                  name="name"
+                  placeholder="Name"
+                  value={form.name}
+                  onChange={handleChange}
+                  className={`register-input ${errors.name ? 'error' : ''}`}
+                />
+                {errors.name && (
+                  <p className="error-message">
+                    {errors.name}
+                  </p>
+                )}
+              </div>
               <div>
                 <input
                   type="email"

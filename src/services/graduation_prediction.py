@@ -1,4 +1,4 @@
-# src/services/graduation_prediction.py
+# Backend service to handle ML operations and queries for predictions
 import os
 import joblib
 import pandas as pd
@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 MODEL_DIR = os.path.join(os.path.dirname(__file__), '../../models')
 MODEL_PATH = os.path.join(MODEL_DIR, 'graduation_model_latest.joblib')
 FEATURE_COLS_PATH = os.path.join(MODEL_DIR, 'feature_columns.joblib')
+SCALER_PATH = os.path.join(MODEL_DIR, 'scaler_latest.joblib')
 
 try:
     model = joblib.load(MODEL_PATH)
@@ -24,6 +25,14 @@ except Exception as e:
     model = None
     feature_cols = None
 
+# For scaling because Linear Regression using scaled features
+try:
+    scaler = joblib.load(SCALER_PATH)
+    logger.info("✓ Feature scaler loaded successfully")
+except Exception as e:
+    logger.warning(f"⚠ Could not load scaler: {e}")
+    logger.warning("⚠ Predictions may be inaccurate if model requires scaled features!")
+    scaler = None
 
 def extract_student_features(matric_no=None, student_status='Active'):
     """
@@ -216,6 +225,13 @@ def predict_graduation(matric_no=None, student_status='Active'):
     # Prepare features for prediction
     X = df[feature_cols].fillna(0)
     
+    # Scale features if scaler is available
+    if scaler is not None:
+        X = scaler.transform(X)
+        logger.debug("Features scaled for prediction")
+    else:
+        logger.warning("⚠ Scaler not loaded - predictions may be inaccurate!")
+
     # Make predictions
     try:
         probabilities = model.predict_proba(X)[:, 1]  # Probability of on-time (class 1)

@@ -2,13 +2,16 @@
 # CSV_FOLDER = "csv files"
 # os.makedirs(CSV_FOLDER, exist_ok=True)  # Create if doesn't exist
 
-import datetime, logging, os, pyodbc, re
+import datetime, logging, os, pyodbc, re, warnings
 from cryptography.fernet import Fernet
 from datetime import date,datetime
 from src.db.core import get_db_connection
 from src.services.db_helpers import get_year_1_course_codes
 from dotenv import load_dotenv
 import pandas as pd
+
+# I've disabled the warnings when trying to parse through the marksheet, just comment it out if you wish to see the warnings in terminal
+warnings.filterwarnings("ignore", category=UserWarning, module='openpyxl.worksheet.header_footer')
 
 
 
@@ -233,6 +236,7 @@ def process_student_datasheet(file_path, sheet_info, output_folder):
 
 def process_course_str(file_path, sheet_info, output_folder, is_legacy=False):
     """Process the Course-Str sheet and export course structure data."""
+    print("\n[DEBUG] Starting process_course_str.")
     try:
         # Read Excel with first row as headers
         df = pd.read_excel(file_path, sheet_name=sheet_info['name'], header=0)
@@ -327,10 +331,12 @@ def process_course_str(file_path, sheet_info, output_folder, is_legacy=False):
         print("\nFirst complete course record:")
         print(df.head(1).to_string(index=False))
         
+        print("[DEBUG] Finished process_course_str successfully.")
         return [output_file]
         
     except Exception as e:
         print(f"\n❌ Error processing Course-Str sheet: {str(e)}")
+        print("[DEBUG] Finished process_course_str with an error.")
         return None
 
 def clean_phone_number(phone):
@@ -389,39 +395,36 @@ def resolve_course_code(conn, short_code: str) -> str | None:
         # Not found or ambiguous
         return None
 
-def version_to_date(s: str):
-    y,m = map(int, s.split("-"))
-    return date(y,m,1)
-
 def import_course_structure(csv_file_path, course_version):
     """
     Import course structure data from CSV to SQL Server
     
     Args:
         csv_file_path (str): Path to the CSV file
+        course_version (str): The program code for this course structure.
+                              (Note: Parameter name is legacy, but value is program code).
         
     Returns:
         tuple: (success_count, error_count) of records processed
     """
+    print(f"\n[DEBUG] Starting import_course_structure.")
+    print(f"[DEBUG]   CSV Path: {csv_file_path}")
+    print(f"[DEBUG]   Program Code (from course_version param): {course_version}")
+
     conn = None
     insert_count = 0
     update_count = 0
     error_count = 0
-    version_date = version_to_date(course_version)
     
     try:
-        # Establish database connection
-        # conn = pyodbc.connect(
-        #     'DRIVER={ODBC Driver 17 for SQL Server};'
-        #     f'SERVER={os.getenv("MSSQL_SERVER")};'
-        #     f'DATABASE={os.getenv("MSSQL_DATABASE")};'
-        #     f'UID={os.getenv("MSSQL_USERNAME")};'
-        #     f'PWD={os.getenv("MSSQL_PASSWORD")}'
-        # )
         conn = get_db_connection()
         
-        # Read CSV file (skip first row as header)
         df = pd.read_csv(csv_file_path, header=0)
+        print(f"[DEBUG]   Read {len(df)} rows from CSV.")
+
+        if df.empty:
+            print("[DEBUG]   CSV file is empty. Aborting import.")
+            return 0, 0, 0
         
         update_query = """
         UPDATE COURSE_STRUCTURE SET
@@ -440,7 +443,7 @@ def import_course_structure(csv_file_path, course_version):
             COURSE_YEAR = ?,
             COURSE_STATUS = ?,
             COURSE_PRIORITY = ?,
-            COURSE_VERSION = ?
+            PROGRAM_CODE = ?
         WHERE COURSE_CODE = ?
         """
         
@@ -450,14 +453,40 @@ def import_course_structure(csv_file_path, course_version):
             CREDIT_HOUR, LECT_HR_WK, TUT_HR_WK, LAB_HR_WK, 
             BL_HR_WK, CU_CW_Credits, CU_EX_Credits, 
             COURSE_LEVEL, LECTURER, COURSE_YEAR,
-            COURSE_STATUS, COURSE_PRIORITY, COURSE_VERSION
+            COURSE_STATUS, COURSE_PRIORITY, PROGRAM_CODE
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
 
         
         # Process each row
         with conn.cursor() as cursor:
+            # Insert new lecturers from the CSV into the LECTURERS table first.
+            try:
+                csv_lecturers = df['Lecturer'].dropna().unique()
+
+                if csv_lecturers.size > 0:
+                    # Fetch existing lecturers to avoid duplicates
+                    cursor.execute("SELECT LECTURER FROM LECTURERS")
+                    existing_lecturers = {row.LECTURER for row in cursor.fetchall()}
+
+                    new_lecturers = [lecturer for lecturer in csv_lecturers if lecturer not in existing_lecturers]
+
+                    if new_lecturers:
+                        print(f"[DEBUG]   Inserting {len(new_lecturers)} new lecturers...")
+                        lecturer_insert_query = "INSERT INTO LECTURERS (LECTURER) VALUES (?)"
+                        for lecturer in new_lecturers:
+                            cursor.execute(lecturer_insert_query, (lecturer,))
+                        print(f"[DEBUG]   Queued {len(new_lecturers)} lecturers for insertion.")
+                    else:
+                        print("[DEBUG]   All lecturers from CSV already exist in LECTURERS table.")
+                else:
+                    print("[DEBUG]   No lecturers found in 'Lecturer' column of CSV.")
+            except Exception as e:
+                print(f"[ERROR] An error occurred while importing lecturers: {e}")
+                # Log the error and continue with course structure import
+
             for idx, row in df.iterrows():
+                print(f"[DEBUG]   Processing row {idx}...")
                 try:
                     # Prepare values
                     values = [
@@ -477,17 +506,19 @@ def import_course_structure(csv_file_path, course_version):
                         str(row['Year']) if pd.notna(row['Year']) else None,
                         str(row['Course Status']) if 'Course Status' in row and pd.notna(row['Course Status']) else None,
                         int(row['Course Priority']) if 'Course Priority' in row and pd.notna(row['Course Priority']) else None,
-                        version_date
+                        course_version
                     ]
                     
                     # First try to update
                     cursor.execute(update_query, values[1:] + [values[0]])
                     if cursor.rowcount > 0:
                         update_count += 1
+                        print(f"[DEBUG]     Row {idx}: Updated existing record.")
                     else:
                         # If no rows were updated, try to insert
                         cursor.execute(insert_query, values)
                         insert_count += 1
+                        print(f"[DEBUG]     Row {idx}: Inserted new record.")
                     
                 except Exception as e:
                     error_count += 1
@@ -495,8 +526,8 @@ def import_course_structure(csv_file_path, course_version):
                     print(f"Problematic values: {values}")
                     continue
             
+            print("[DEBUG]   Committing transaction...")
             conn.commit()
-            #print(f"Import completed. Success: {success_count}, Errors: {error_count}")
             print(f"Import results:")
             print(f"- {insert_count} new records inserted")
             print(f"- {update_count} existing records updated")
@@ -510,6 +541,7 @@ def import_course_structure(csv_file_path, course_version):
     finally:
         if conn:
             conn.close()
+        print("[DEBUG] Finished import_course_structure.")
     
     return insert_count, update_count, error_count
 
@@ -740,15 +772,15 @@ def import_student_scores(csv_file_path):
                     }
                     records.append(record)
 
-                record[f'ATTEMPT_{attempt_num}'] = row[col]
+                value = row[col]
+                try:
+                    # Round numeric values to 2 decimal places
+                    value = round(float(value), 2)
+                except (ValueError, TypeError):
+                    # Keep non-numeric values as is
+                    pass
                 
-                # Store the attempt
-                if attempt_num == 1:
-                    record['ATTEMPT_1'] = row[col]
-                elif attempt_num == 2:
-                    record['ATTEMPT_2'] = row[col]
-                elif attempt_num == 3:
-                    record['ATTEMPT_3'] = row[col]
+                record[f'ATTEMPT_{attempt_num}'] = value
 
         # Force MPU ATTEMPT_3 value to "N/A"
         for r in records:
@@ -756,24 +788,15 @@ def import_student_scores(csv_file_path):
             if isinstance(code, str) and code.strip().upper().startswith('MPU'):
                 r['ATTEMPT_3'] = 'N/A'
 
-        update_query = """
-        UPDATE STUDENT_SCORE SET
-            ATTEMPT_1 = ?, ATTEMPT_2 = ?, ATTEMPT_3 = ?
-        WHERE MATRIC_NO = ? AND COURSE_CODE = ?
-        """
-
-        insert_query = """
-        INSERT INTO STUDENT_SCORE (
-            MATRIC_NO, COURSE_CODE, ATTEMPT_1, ATTEMPT_2, ATTEMPT_3
-        ) VALUES (?, ?, ?, ?, ?)
-        """
-
         with conn.cursor() as cursor:
+            def should_update_timestamp(value):
+                return value is not None and str(value).strip() != '-'
+
             for record in records:
                 try:
                     # Check if record exists and get current values
                     cursor.execute("""
-                        SELECT ATTEMPT_1, ATTEMPT_2, ATTEMPT_3
+                        SELECT ATTEMPT_1, ATTEMPT_2, ATTEMPT_3, A1_UPDATED_AT, A2_UPDATED_AT, A3_UPDATED_AT
                         FROM STUDENT_SCORE 
                         WHERE MATRIC_NO = ? AND COURSE_CODE = ?
                     """, (record['MATRIC_NO'], record['COURSE_CODE']))
@@ -781,14 +804,15 @@ def import_student_scores(csv_file_path):
                     existing = cursor.fetchone()
                     
                     if existing:
-                        # Compare current values with new values
+                        current_attempt1, current_attempt2, current_attempt3, \
+                        current_a1_updated_at, current_a2_updated_at, current_a3_updated_at = existing
+
                         new_values = [record['ATTEMPT_1'], record['ATTEMPT_2'], record['ATTEMPT_3']]
-                        existing_values = list(existing)
-                        
+                        existing_values = [current_attempt1, current_attempt2, current_attempt3]
+
                         # Check if any value has changed
                         has_changes = False
                         for old_val, new_val in zip(existing_values, new_values):
-                            # Normalize None and empty string comparisons
                             old_normalized = str(old_val).strip() if old_val is not None else ""
                             new_normalized = str(new_val).strip() if new_val is not None else ""
                             if old_normalized != new_normalized:
@@ -796,26 +820,58 @@ def import_student_scores(csv_file_path):
                                 break
                         
                         if has_changes:
-                            # Only update if there are actual changes
-                            cursor.execute(update_query,
-                                record['ATTEMPT_1'],
-                                record['ATTEMPT_2'],
-                                record['ATTEMPT_3'],
-                                record['MATRIC_NO'],
-                                record['COURSE_CODE']
-                            )
+                            update_set_parts = []
+                            update_values = []
+
+                            # ATTEMPT_1
+                            update_set_parts.append("ATTEMPT_1 = ?")
+                            update_values.append(new_values[0])
+                            if should_update_timestamp(new_values[0]) and str(new_values[0]) != str(current_attempt1):
+                                update_set_parts.append("A1_UPDATED_AT = GETDATE()")
+                            else:
+                                update_set_parts.append("A1_UPDATED_AT = ?")
+                                update_values.append(current_a1_updated_at)
+                            
+                            # ATTEMPT_2
+                            update_set_parts.append("ATTEMPT_2 = ?")
+                            update_values.append(new_values[1])
+                            if should_update_timestamp(new_values[1]) and str(new_values[1]) != str(current_attempt2):
+                                update_set_parts.append("A2_UPDATED_AT = GETDATE()")
+                            else:
+                                update_set_parts.append("A2_UPDATED_AT = ?")
+                                update_values.append(current_a2_updated_at)
+
+                            # ATTEMPT_3
+                            update_set_parts.append("ATTEMPT_3 = ?")
+                            update_values.append(new_values[2])
+                            if should_update_timestamp(new_values[2]) and str(new_values[2]) != str(current_attempt3):
+                                update_set_parts.append("A3_UPDATED_AT = GETDATE()")
+                            else:
+                                update_set_parts.append("A3_UPDATED_AT = ?")
+                                update_values.append(current_a3_updated_at)
+
+                            update_query = f"""
+                                UPDATE STUDENT_SCORE
+                                SET {', '.join(update_set_parts)}
+                                WHERE MATRIC_NO = ? AND COURSE_CODE = ?
+                            """
+                            final_params = update_values + [record['MATRIC_NO'], record['COURSE_CODE']]
+                            cursor.execute(update_query, final_params)
                             update_count += 1
                         else:
                             skip_count += 1
                     else:
                         # Record doesn't exist, insert it
-                        cursor.execute(insert_query,
-                            record['MATRIC_NO'],
-                            record['COURSE_CODE'],
-                            record['ATTEMPT_1'],
-                            record['ATTEMPT_2'],
-                            record['ATTEMPT_3']
-                        )
+                        today = datetime.now()
+                        cursor.execute("""
+                            INSERT INTO STUDENT_SCORE (MATRIC_NO, COURSE_CODE, ATTEMPT_1, ATTEMPT_2, ATTEMPT_3, A1_UPDATED_AT, A2_UPDATED_AT, A3_UPDATED_AT)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            record['MATRIC_NO'], record['COURSE_CODE'], record['ATTEMPT_1'], record['ATTEMPT_2'], record['ATTEMPT_3'],
+                            today if should_update_timestamp(record['ATTEMPT_1']) else None,
+                            today if should_update_timestamp(record['ATTEMPT_2']) else None,
+                            today if should_update_timestamp(record['ATTEMPT_3']) else None
+                        ))
                         insert_count += 1
 
                 except Exception as e:
@@ -898,17 +954,17 @@ def import_marksheet(xlsm_path: str, batch_size: int = 200):
     ATTEMPT_UPDATES = {
         "ATTEMPT_1": """
             UPDATE dbo.STUDENT_SCORE
-            SET ATTEMPT_1 = ?, LAST_UPDATED = ?
+            SET ATTEMPT_1 = ?, A1_UPDATED_AT = ?
             WHERE MATRIC_NO = ? AND COURSE_CODE = ?
         """,
         "ATTEMPT_2": """
             UPDATE dbo.STUDENT_SCORE
-            SET ATTEMPT_2 = ?, LAST_UPDATED = ?
+            SET ATTEMPT_2 = ?, A2_UPDATED_AT = ?
             WHERE MATRIC_NO = ? AND COURSE_CODE = ?
         """,
         "ATTEMPT_3": """
             UPDATE dbo.STUDENT_SCORE
-            SET ATTEMPT_3 = ?, LAST_UPDATED = ?
+            SET ATTEMPT_3 = ?, A3_UPDATED_AT = ?
             WHERE MATRIC_NO = ? AND COURSE_CODE = ?
         """
     }
@@ -1003,9 +1059,12 @@ def import_marksheet(xlsm_path: str, batch_size: int = 200):
                     continue
 
                 # Score normalization
-                score_val = str(score_raw).strip() if pd.notna(score_raw) else "-"
-                if score_val == "":
-                    score_val = "-"
+                try:
+                    score_val = round(float(score_raw), 2)
+                except (ValueError, TypeError):
+                    score_val = str(score_raw).strip() if pd.notna(score_raw) else "-"
+                    if score_val == "":
+                        score_val = "-"
 
                 # CU_ID -> MATRIC_NO
                 cur.execute(q_get_matric, (cu_id,))
@@ -1029,35 +1088,81 @@ def import_marksheet(xlsm_path: str, batch_size: int = 200):
                     return (v is None) or (str(v).strip() == "-")
 
                 # Decide target
+                target = None
                 if cls == "MPU":
                     if is_dash(a1):
                         target = "ATTEMPT_1"
                     elif is_dash(a2):
                         target = "ATTEMPT_2"
                     else:
-                        pair = [("ATTEMPT_1", s1), ("ATTEMPT_2", s2)]
-                        pair.sort(key=lambda x: (x[1] is not None, x[1]))  # NULL oldest
-                        target = pair[0][0]
-                else:
+                        # Both A1 and A2 are filled, find the oldest updated one
+                        # Only consider A1_UPDATED_AT and A2_UPDATED_AT
+                        updated_times = []
+                        if s1 is not None: updated_times.append(("ATTEMPT_1", s1))
+                        if s2 is not None: updated_times.append(("ATTEMPT_2", s2))
+
+                        if updated_times:
+                            # Sort by timestamp (oldest first)
+                            updated_times.sort(key=lambda x: x[1])
+                            target = updated_times[0][0]
+                        else:
+                            # If no timestamps, default to ATTEMPT_1 (or skip if no clear rule)
+                            target = "ATTEMPT_1" # Default to A1 if no timestamps to compare
+
+                    # For MPU, ATTEMPT_3 is always N/A, so we need to ensure it's set if not already
+                    # This will be handled by the ATTEMPT_UPDATES dict if target is A1 or A2
+                    # If target is A1 or A2, we also need to ensure A3 is N/A
+                    # This requires a slightly different update query for MPU
+                    # For simplicity, let's ensure A3 is N/A in the update query itself
+                    # This will be handled by a separate update if needed, or by the main update if A3 is part of it
+
+                else: # Non-MPU
                     if is_dash(a1):
                         target = "ATTEMPT_1"
                     elif is_dash(a2):
                         target = "ATTEMPT_2"
                     elif is_dash(a3):
                         target = "ATTEMPT_3"
-                    else:
-                        skipped += 1
-                        continue
+                    # If all are filled, target remains None, and we skip the update
 
-            # Validate target before using
-            if target not in ATTEMPT_UPDATES:
-                logging.error(f"Invalid target column: {target}")
-                skipped += 1
-                continue
+                if target is None:
+                    skipped += 1
+                    continue
 
-            # Update with resolved_code using pre-defined query from dict
-            cur.execute(ATTEMPT_UPDATES[target], (score_val, import_timestamp, matric_no, resolved_code))
-            updated += 1
+                # Construct the update query dynamically based on target and MPU status
+                update_query_parts = []
+                update_params = []
+
+                # Always update the target attempt and its timestamp
+                update_query_parts.append(f"{target} = ?")
+                update_query_parts.append(f"A{target.split('_')[1]}_UPDATED_AT = ?")
+                update_params.append(score_val)
+                update_params.append(import_timestamp)
+
+                # Special handling for MPU ATTEMPT_3
+                if cls == "MPU" and str(a3).strip().upper() != "N/A":
+                    update_query_parts.append("ATTEMPT_3 = ?")
+                    update_query_parts.append("A3_UPDATED_AT = ?")
+                    update_params.append("N/A")
+                    update_params.append(import_timestamp)
+
+                final_update_query = f"""
+                    UPDATE dbo.STUDENT_SCORE
+                    SET {', '.join(update_query_parts)}
+                    WHERE MATRIC_NO = ? AND COURSE_CODE = ?
+                """
+                cur.execute(final_update_query, (*update_params, matric_no, resolved_code))
+            
+            # Log details of the update
+            if cur.rowcount > 0:
+                logging.info("[INGEST] Updated %s for %s (%s) with score %s",
+                             matric_no, resolved_code, target, score_val)
+                updated += 1
+            else:
+                logging.warning("[INGEST] No rows updated for %s (Course: %s, Attempt: %s) with score %s. Check if record exists or score is identical.",
+                                matric_no, resolved_code, target, score_val)
+                skipped += 1 # Count as skipped if no row was affected
+
             if updated % batch_size == 0:
                 conn.commit()
 

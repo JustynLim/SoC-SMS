@@ -5,7 +5,7 @@ import { MdDeleteOutline, MdOutlineEdit, MdOutlineCancel, MdOutlineSaveAs } from
 
 // This component is solely for the action col to edit and delete student records
 
-export default function StudentRow({ student, columns, shouldCenter, onUpdate, onDelete, highlight }) {
+export default function StudentRow({ student, columns, shouldCenter, onUpdate, onDelete, highlight, studentStatuses }) {
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState({ ...student });
   const navigate = useNavigate();
@@ -59,6 +59,7 @@ export default function StudentRow({ student, columns, shouldCenter, onUpdate, o
               color: isNameColumn && !editMode ? "#007bff" : "inherit",
               // Add extra padding for last visible column
               paddingRight: isLastCol ? "24px" : "10px",
+              minWidth: editMode && col === "BM" ? '80px' : 'auto',
             }}
             onClick={isNameColumn && !editMode ? handleNameClick : undefined}
             onMouseEnter={(e) => {
@@ -74,13 +75,25 @@ export default function StudentRow({ student, columns, shouldCenter, onUpdate, o
           >
             {editMode ? (
               col === "COHORT" ? (
-                // Show full date in edit mode
                 <input
                   type="date"
                   value={value && value !== "-" ? new Date(value).toISOString().split("T")[0] : ""}
                   onChange={(e) => handleChange(e, col)}
                   style={{ width: "100%", padding: "4px" }}
                 />
+              ) : col === "BM" || col === "ENGLISH" ? (
+                <select value={value !== "-" ? value : ""} onChange={(e) => handleChange(e, col)} style={{ width: "100%", padding: "4px" }}>
+                  <option value="" disabled>Select...</option>
+                  {['A', 'B', 'C', 'D', 'E', 'F'].map(grade => (
+                    <option key={grade} value={grade}>{grade}</option>
+                  ))}
+                </select>
+              ) : col === "STUDENT_STATUS" ? (
+                <select value={value !== "-" ? value : ""} onChange={(e) => handleChange(e, col)} style={{ width: "100%", padding: "4px" }}>
+                  {(studentStatuses || []).map(status => (
+                    <option key={status} value={status}>{status}</option>
+                  ))}
+                </select>
               ) : (
                 <input
                   value={value !== "-" ? value : ""}

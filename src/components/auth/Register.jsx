@@ -4,6 +4,7 @@ import isEmail from 'validator/lib/isEmail';
 
 export default function Register() {
   const [form, setForm] = useState({
+    name: '',
     email: '',
     password: '',
     confirmPassword: '',
@@ -53,6 +54,7 @@ export default function Register() {
 
     const validate = () => {
     const newErrors = {};
+    if (!form.name) newErrors.name = 'Name is required';
     if (!isEmail(form.email)) newErrors.email = 'Enter a valid email';
     if (!form.password) newErrors.password = 'Password is required';
     if (form.password !== form.confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
@@ -76,59 +78,6 @@ export default function Register() {
       setIsLoading(false);
       return;
     }
-
-    //const requestData = {...form};
-
-    // if (isFirstUser){
-    //     delete requestData.twoFACode;
-    // }
-
-  //   try {
-  //     const response = await fetch('http://localhost:5001/api/register', {
-  //       method: 'POST',
-  //       headers: { 'Content-Type': 'application/json' },
-  //       body: JSON.stringify(requestData)
-  //     });
-
-  //     if(!response.ok){
-  //       const errorData = await response.json().catch(() => ({}));
-  //       throw new Error(data.error || "Registration failed (77)");
-  //     }
-
-  //     const text = await response.text(); // Read as txt 1st
-  //     console.log(`Status: ${response.status}`,`Response text: ${text}`)
-
-  //     let data = {};
-  //     try {
-  //       data = JSON.parse(text); // Try to parse JSON
-  //     } 
-  //     catch {
-  //       throw new Error('Invalid server response (not JSON)');
-  //     }
-
-  //     //const data = await res.json();
-
-  //     if (!response.ok) throw new Error(data.error || 'Registration failed');
-
-  //     if (data.isAdmin) {
-  //       setAdminSetupInfo({
-  //         qrUrl: data.qrUrl,
-  //         manualCode: data.manualCode
-  //       });
-  //     }
-
-  //     setRegistrationSuccess(true);
-      
-  //   //   if (!data.isAdmin){
-  //   //   setTimeout(() => navigate('/login'), 4000);
-  //   //   }
-  //   } 
-    
-  //   catch (err) {
-  //     setErrors({ api: err.message });
-  //     console.error(`Registration error: ${err.message}`);
-  //   }
-  // };
 
       try {
       const response = await fetch('http://localhost:5001/api/register', {
@@ -165,9 +114,9 @@ export default function Register() {
   };
 
   return (
-    <div className="register-page-container"> {/* Using the same full-page container */}
-      <div className="register-box"> {/* New class for the register box */}
-        <h1 className="register-header">Register</h1> {/* New class for header */}
+    <div className="login-page-container"> {/* Using the same full-page container */}
+      <div className="login-box"> {/* New class for the register box */}
+        <h1 className="login-header">Register</h1> {/* New class for header */}
 
         {errors.api && (
           <div className="api-error">
@@ -184,12 +133,27 @@ export default function Register() {
           <form onSubmit={handleSubmit}>
             <div>
               <input
+                type="text"
+                name="name"
+                placeholder="Name"
+                value={form.name}
+                onChange={handleChange}
+                className={`login-input ${errors.name ? 'error' : ''}`}
+              />
+              {errors.name && (
+                <p className="error-message">
+                  {errors.name}
+                </p>
+              )}
+            </div>
+            <div>
+              <input
                 type="email"
                 name="email"
                 placeholder="Email"
                 value={form.email}
                 onChange={handleChange}
-                className={`register-input ${errors.email ? 'error' : ''}`}
+                className={`login-input ${errors.email ? 'error' : ''}`}
               />
               {errors.email && (
                 <p className="error-message">
@@ -205,7 +169,7 @@ export default function Register() {
                 placeholder="Password"
                 value={form.password}
                 onChange={handleChange}
-                className={`register-input ${errors.password ? 'error' : ''}`}
+                className={`login-input ${errors.password ? 'error' : ''}`}
               />
               {errors.password && (
                 <p className="error-message">
@@ -221,7 +185,7 @@ export default function Register() {
                 placeholder="Confirm Password"
                 value={form.confirmPassword}
                 onChange={handleChange}
-                className={`register-input ${errors.confirmPassword ? 'error' : ''}`}
+                className={`login-input ${errors.confirmPassword ? 'error' : ''}`}
               />
               {errors.confirmPassword && (
                 <p className="error-message">
@@ -237,7 +201,7 @@ export default function Register() {
               placeholder="Enter 6-digit 2FA code"
               value={form.twoFACode}
               onChange={handleChange}
-              className={`register-input ${errors.twoFACode ? 'error' : ''}`}
+              className={`login-input ${errors.twoFACode ? 'error' : ''}`}
               pattern="\d{6}"
               maxLength={6}
             />
@@ -251,15 +215,15 @@ export default function Register() {
             <button
               type="submit"
               disabled={isLoading}
-              className="register-button" // New class for button
+              className="login-button" // New class for button
             >
               {isLoading ? 'Registering...' : 'Register'}
             </button>
           </form>
         )}
 
-        <div className="register-links"> {/* New class for links container */}
-          <Link to="/login" className="register-link"> {/* New class for link */}
+        <div className="login-links"> {/* New class for links container */}
+          <Link to="/login" className="login-link"> {/* New class for link */}
             Already have an account? Login
           </Link>
         </div>

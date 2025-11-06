@@ -3,7 +3,9 @@ import Sidebar from "../components/Sidebar";
 import StudentRow from "../components/StudentRow";
 import useCohorts from "../components/useCohorts";
 import useStudentsData from "../components/Students";
+import api from '../services/api';
 import AddNewStudent from "../services/add_new_student";
+import { BsPersonAdd } from "react-icons/bs";
 import "../App.css";
 
 // Helper functions for localStorage
@@ -29,7 +31,7 @@ const loadFiltersFromStorage = () => {
 };
 
 export default function StudentsPage() {
-  const { data, loading, error } = useStudentsData();
+  const { data, loading, error, setData } = useStudentsData();
   //const [students, setStudents] = useState([]);
   const {cohorts,loadingCohorts,errorCohorts} = useCohorts();
   const [students, setStudents] = React.useState(null);
@@ -41,7 +43,7 @@ export default function StudentsPage() {
 
   // Add new student (individually)
   const [addStudentOpen, setAddStudentOpen] = useState(false);
-  const [successMessage, setSuccessMessage] = useState("");
+  const [successMessage, setSuccessMessage, ] = useState("");
 
   // Search functionality
   const [query, setQuery] = React.useState("");
@@ -74,7 +76,10 @@ export default function StudentsPage() {
   const handleAddSuccess = (message) => {
     setSuccessMessage(message);
     setTimeout(() => setSuccessMessage(""), 3000);
-    // Refresh student list here if needed
+    // Refresh student list
+    api.get('/students')
+      .then(newData => setData(newData.data))
+      .catch(err => console.error("Failed to refetch students:", err));
   };
 
   React.useEffect(() => {
@@ -91,6 +96,19 @@ export default function StudentsPage() {
   };
 
   const [colsMenuOpen, setColsMenuOpen] = React.useState(false);
+  const [studentStatuses, setStudentStatuses] = React.useState([]);
+
+  React.useEffect(() => {
+    const fetchStatuses = async () => {
+      try {
+        const res = await api.get('/admin/student-statuses');
+        setStudentStatuses(res.data);
+      } catch (err) {
+        console.error("Failed to fetch student statuses:", err);
+      }
+    };
+    fetchStatuses();
+  }, []);
 
   React.useLayoutEffect(() => {
     setStudents(Array.isArray(data) ? data : []);
@@ -180,7 +198,7 @@ export default function StudentsPage() {
     COHORT: "Cohort",
     SEM: "Sem",
     CU_ID: "CU ID",
-    IC_NO: "IC No",
+    IC_NO: "IC/Passport No",
     MOBILE_NO: "Mobile No",
     EMAIL: "Email",
     BM: "BM",
@@ -248,15 +266,7 @@ export default function StudentsPage() {
     }
 
     try {
-      const res = await fetch(`http://localhost:5001/api/students/${student.STUDENT_ID}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) throw new Error(`Failed to update: ${res.status}`);
-      const saved = await res.json();
-      console.log(saved);
+      const res = await api.put(`/students/${student.STUDENT_ID}`, payload);
 
       // Update state
       setStudents((prev) =>
@@ -271,11 +281,7 @@ export default function StudentsPage() {
   // --- API: Delete student
   const deleteStudent = async (studentId) => {
     try {
-      const res = await fetch(`http://localhost:5001/api/students/${studentId}`, {
-        method: "DELETE",
-      });
-
-      if (!res.ok) throw new Error(`Failed to delete student: ${res.status}`);
+      await api.delete(`/students/${studentId}`);
 
       // Update state
       setStudents((prev) => prev.filter((s) => s.STUDENT_ID !== studentId));
@@ -465,15 +471,19 @@ return (
             <button
               onClick={() => setAddStudentOpen(true)}
               style={{
-                padding: "8px 16px",
-                background: "#28a745",
+                padding: "8px",
+                background: "#1e88e5",
                 color: "white",
                 border: "none",
                 borderRadius: 4,
                 cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
               }}
+              title="Add new student"
             >
-              Add Student
+              <BsPersonAdd size={20} />
             </button>
 
             {/* // At the bottom of your component: */}
@@ -599,6 +609,7 @@ return (
                     onUpdate={updateStudent}
                     onDelete={(id) => deleteStudent(id)}
                     highlight={highlight}
+                    studentStatuses={studentStatuses}
                   />
                 ))}
               </tbody>

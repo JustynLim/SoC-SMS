@@ -1,46 +1,86 @@
-import React from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import Course_Structure from "../components/CourseStructure";
+import AddCourseModal from "../components/AddCourseModal";
+import CourseStructureRow from "../components/CourseStructureRow"; // Import the new row component
+import api from "../services/api"; // Import the api service
 import '../App.css'
 import Sidebar from "../components/Sidebar"
 
 
 export default function CourseStructurePage() {
-  const { data, loading, error } = Course_Structure();
+  const { data, loading, error, setData } = Course_Structure();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [lecturers, setLecturers] = useState([]);
+
+  useEffect(() => {
+    const fetchLecturers = async () => {
+      try {
+        const res = await api.get('/admin/lecturers');
+        setLecturers(res.data);
+      } catch (err) {
+        console.error("Failed to fetch lecturers:", err);
+      }
+    };
+    fetchLecturers();
+  }, []);
+
+  const refetchCourses = useCallback(() => {
+    api.get("/course-structure")
+      .then(res => setData(res.data))
+      .catch(err => console.error("Refetch failed:", err));
+  }, [setData]);
+
+  const handleUpdateCourse = async (updatedCourse) => {
+    try {
+      await api.put('/course-structure', {
+        ...updatedCourse,
+        original_course_code: updatedCourse.COURSE_CODE, // Assuming code is not editable
+        original_program_code: updatedCourse.PROGRAM_CODE,
+      });
+      // Refresh data to show updated course
+      refetchCourses();
+    } catch (err) {
+      console.error("Failed to update course:", err);
+      alert("Update failed! " + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const handleDeleteCourse = async (courseCode, programCode) => {
+    try {
+      await api.delete(`/course-structure/${courseCode}/${programCode}`);
+      // Remove course from local state
+      setData(prevData => prevData.filter(c => !(c.COURSE_CODE === courseCode && c.PROGRAM_CODE === programCode)));
+    } catch (err) {
+      console.error("Failed to delete course:", err);
+      alert("Delete failed! " + (err.response?.data?.error || err.message));
+    }
+  };
 
   if (loading) return <p>Loading...</p>;
   if (error) return <p style={{ color: "red" }}>Error: {error}</p>;
   if (!data.length) return <p>No data found.</p>;
 
-  // Group courses by year
   const coursesByYear = data.reduce((acc, course) => {
     const year = course.COURSE_YEAR || 'Uncategorized';
-    if (!acc[year]) {
-      acc[year] = [];
-    }
+    if (!acc[year]) acc[year] = [];
     acc[year].push(course);
     return acc;
   }, {});
 
-  // Define the desired year order
   const yearOrder = ['Year 1', 'Year 2', 'Year 3', 'Compulsory'];
 
-  // Sort the years according to desired order
   const sortedYears = Object.keys(coursesByYear).sort((a, b) => {
     const aIndex = yearOrder.indexOf(a);
     const bIndex = yearOrder.indexOf(b);
-    
-    // If both are in ordered list, sort by their position
     if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
-    // If only one is in the ordered list, that comes first
     if (aIndex !== -1) return -1;
     if (bIndex !== -1) return 1;
-    // Otherwise sort alphabetically
     return a.localeCompare(b);
   });
 
-  // Mapping: DB column name -> Display name
   const columnMapping = {
     COURSE_CODE: "Code",
+    PROGRAM_CODE: "Program",
     MODULE: "Module",
     COURSE_CLASSIFICATION: "Classification",
     PRE_CO_REQ: "Pre/Co Req",
@@ -57,13 +97,11 @@ export default function CourseStructurePage() {
     COURSE_STATUS: "Course Status"
   };
 
-  // Fixed col order
   const columns = Object.keys(columnMapping);
 
   const getCellValue = (row, colKey) => {
     if (row == null) return "-";
     
-    // Handles calc for Total hr/wk column
     if (colKey === 'TOTAL_HR_WK') {
         const extractFirstNumber = (str) => {
             if (!str) return 0;
@@ -78,26 +116,12 @@ export default function CourseStructurePage() {
       return total === 0 ? "0" : total.toString();
     }
 
-      // For all other columns
-    let value;
-    if (Object.prototype.hasOwnProperty.call(row, colKey)) {
-        value = row[colKey];
-    } else {
-        const lowerKey = colKey.toLowerCase();
-        for (const k of Object.keys(row)) {
-        if (k.toLowerCase() === lowerKey) {
-            value = row[k];
-            break;
-        }
-        }
-    }
-  
-    // Explicitly check for null/undefined/empty string, but preserve 0
+    let value = row[colKey];
     return value === null || value === undefined || value === "" ? "-" : value.toString();
-    };
+  };
 
-  // Center alignment for numeric fields
   const shouldCenter = (col) => [
+    'PROGRAM_CODE',
     'COURSE_CLASSIFICATION',
     'PRE_CO_REQ',
     'CREDIT_HOUR',
@@ -117,26 +141,39 @@ export default function CourseStructurePage() {
     <Sidebar />
 
   <div className="flex-1 p-8 w-full overflow-auto">
-    {/* <h1 className="text-3xl font-bold mb-4">Course Structure</h1> */}
+      <AddCourseModal 
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onCourseAdded={refetchCourses}
+      />
+      <button 
+        onClick={() => setIsModalOpen(true)}
+        className="fixed bottom-8 right-8 bg-blue-600 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50"
+        title="Add new course"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+        </svg>
+      </button>
+
         <div style={{ 
-          margin: '20px auto', // Centered with auto margins
-          maxWidth: '95%', // Prevents table from touching screen edges
-          width: 'fit-content' // Container fits table width
+          margin: '20px auto', 
+          maxWidth: '95%', 
+          width: 'fit-content' 
         }}>
-          {/* <h1>Course Structure</h1> */}
           <div style={{
             maxHeight: 'calc(100vh - 150px)',
             overflowY: 'auto',
             position: 'relative',
             border: '1px solid #ddd',
             borderRadius: '4px',
-            margin: '0 auto', // Center the scrollable container
-            minWidth: '800px', // Minimum width before scrolling
-            maxWidth: 'calc(100vw - 100px)' // Maximum width with side margins
+            margin: '0 auto', 
+            minWidth: '800px', 
+            maxWidth: 'calc(100vw - 100px)' 
           }}>
             <table className="course-table" style={{
-              width: '100%', // Table fills its container
-              minWidth: '900px' // Ensure all columns are visible
+              width: '100%', 
+              minWidth: '900px' 
             }}>
               <thead>
                 <tr>
@@ -155,6 +192,7 @@ export default function CourseStructurePage() {
                       {columnMapping[col]}
                     </th>
                   ))}
+                  <th style={{ position: 'sticky', top: 0, background: '#f8f9fa', zIndex: 10, textAlign: 'center' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -166,7 +204,7 @@ export default function CourseStructurePage() {
                       top: '40px',
                       zIndex: 5
                     }}>
-                      <td colSpan={columns.length} style={{
+                      <td colSpan={columns.length + 1} style={{
                         fontWeight: 'bold',
                         padding: '8px',
                         fontSize: '1.1em'
@@ -175,19 +213,17 @@ export default function CourseStructurePage() {
                       </td>
                     </tr>
                     {coursesByYear[year].map((course, index) => (
-                      <tr key={`${year}-${index}`}>
-                        {columns.map((col) => (
-                          <td 
-                            key={col}
-                            style={{ 
-                              textAlign: shouldCenter(col) ? 'center' : 'left',
-                              backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8f9fa'
-                            }}
-                          >
-                            {getCellValue(course, col) || '-'}
-                          </td>
-                        ))}
-                      </tr>
+                      <CourseStructureRow
+                        key={`${course.COURSE_CODE}-${course.PROGRAM_CODE}`}
+                        course={course}
+                        columns={columns}
+                        columnMapping={columnMapping}
+                        shouldCenter={shouldCenter}
+                        onUpdate={handleUpdateCourse}
+                        onDelete={handleDeleteCourse}
+                        getCellValue={getCellValue}
+                        lecturers={lecturers}
+                      />
                     ))}
                   </React.Fragment>
                 ))}

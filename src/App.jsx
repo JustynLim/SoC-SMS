@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthWrapper } from './components/AuthWrapper.jsx';
 import HomePage from './pages/HomePage.jsx';
@@ -11,17 +11,20 @@ import StudentsPage from './pages/StudentsPage.jsx';
 import StudentsScoresPage from './pages/StudentsScoresPage.jsx';
 import StudentDetailsPage from "./pages/StudentDetailsPage.jsx";
 import GenerateListPage from  './pages/GenerateListPage.jsx';
+import AdminSettingsPage from './pages/AdminSettingsPage.jsx';
+import Logout from './components/Logout.jsx';
 //import Sidebar from './components/Sidebar.jsx';
 //import { SetupGuard } from './components/SetupGuard.jsx';     << No longer needed
 
-
 function App() {
+
   return (
     <BrowserRouter>
       <Routes>
         {/* Public routes */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/logout" element={<Logout />} />
 
         {/* Protected + Setup routes */}
         <Route element={<AuthWrapper />}>
@@ -38,6 +41,7 @@ function App() {
           <Route path="/students-scores" element={<StudentsScoresPage />} />
           <Route path="/students-info/:matricNo" element={<StudentDetailsPage />} />
           <Route path="/generate-list" element={<GenerateListPage />} />
+          <Route path="/admin-settings" element={<AdminSettingsPage />} />
         </Route>
 
         {/* Catch-all */}

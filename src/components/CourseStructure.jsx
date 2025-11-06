@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import api from "../services/api";
 
 export default function Course_Structure() {
   const [data, setData] = useState([]);
@@ -6,15 +7,9 @@ export default function Course_Structure() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetch("http://localhost:5001/api/course-structure") // Adjust port if needed
+    api.get("/course-structure") // Adjust port if needed
       .then((res) => {
-        if (!res.ok) {
-          throw new Error("Failed to fetch data");
-        }
-        return res.json();
-      })
-      .then((data) => {
-        setData(data);
+        setData(res.data);
         setLoading(false);
       })
       .catch((err) => {
@@ -23,5 +18,5 @@ export default function Course_Structure() {
       });
   }, []);
 
-  return { data, loading, error };
+  return { data, loading, error, setData };
 }

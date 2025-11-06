@@ -313,13 +313,12 @@ html, body {
   border-radius: 4px;
   font-size: 0.9rem;
   letter-spacing: normal;
-  word-wrap: break-word;
-  white-space: normal;
-  display: block;
+  white-space: nowrap;
+  display: inline-block;
   text-align: center;
   box-sizing: border-box;
   width: auto;
-  max-width: 60%;
+  max-width: 100%;
   overflow-x: auto;
 }
 
