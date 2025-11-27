@@ -42,28 +42,35 @@ def delete_student_status(status_name):
 # --- Program Code Functions ---
 
 def get_all_programs():
-    """Fetches all program codes from the database."""
+    """Fetches all programs (code and description) from the database."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT PROGRAM_CODE FROM SOC_PROGRAMS ORDER BY PROGRAM_CODE")
-    programs = cursor.fetchall()
+    cursor.execute("SELECT PROGRAM_CODE, PROGRAM_DESCRIPTION FROM SOC_PROGRAMS ORDER BY PROGRAM_CODE")
+    columns = [column[0] for column in cursor.description]
+    programs = [dict(zip(columns, row)) for row in cursor.fetchall()]
     conn.close()
-    return [row.PROGRAM_CODE for row in programs]
+    return programs
 
-def add_program(program_code):
-    """Adds a new program code to the database."""
+def add_program(program_code, program_description=None):
+    """Adds a new program to the database."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO SOC_PROGRAMS (PROGRAM_CODE) VALUES (?)", program_code)
+    cursor.execute(
+        "INSERT INTO SOC_PROGRAMS (PROGRAM_CODE, PROGRAM_DESCRIPTION) VALUES (?, ?)", 
+        (program_code, program_description)
+    )
     conn.commit()
     conn.close()
 
-def update_program(old_program_code, new_program_code):
-    """Updates an existing program code."""
+def update_program(old_program_code, new_program_code, program_description=None):
+    """Updates an existing program."""
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("UPDATE SOC_PROGRAMS SET PROGRAM_CODE = ? WHERE PROGRAM_CODE = ?", new_program_code, old_program_code)
+        cursor.execute(
+            "UPDATE SOC_PROGRAMS SET PROGRAM_CODE = ?, PROGRAM_DESCRIPTION = ? WHERE PROGRAM_CODE = ?", 
+            (new_program_code, program_description, old_program_code)
+        )
         conn.commit()
     finally:
         conn.close()

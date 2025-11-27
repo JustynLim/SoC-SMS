@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import StudentPredictionCard from '../components/StudentPredictionCard';
+import StudentScoresReport from '../components/StudentScoresReport';
 import { ArrowBack } from '@mui/icons-material';
 import '../App.css';
 
@@ -12,6 +13,7 @@ export default function StudentDetailsPage() {
   const [studentInfo, setStudentInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [view, setView] = useState('info'); // 'info' or 'scores'
 
   useEffect(() => {
     if (!matricNo) return;
@@ -104,47 +106,67 @@ export default function StudentDetailsPage() {
           {studentInfo.STUDENT_NAME}
         </h1>
 
-        {/* Two-column layout */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
-            gap: '24px',
-            maxWidth: '1400px',
-          }}
-        >
-          {/* Left Column: Basic Info */}
+        {/* View Switcher */}
+        <div className="flex space-x-4 mb-4 border-b">
+          <button 
+              className={`py-2 px-4 text-sm font-medium ${view === 'info' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+              onClick={() => setView('info')}
+          >
+              Student Information
+          </button>
+          <button 
+              className={`py-2 px-4 text-sm font-medium ${view === 'scores' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+              onClick={() => setView('scores')}
+          >
+              Course Scores
+          </button>
+        </div>
+
+        {/* Conditional Content */}
+        {view === 'info' ? (
           <div
             style={{
-              border: '1px solid #ddd',
-              borderRadius: '8px',
-              padding: '20px',
-              background: 'white',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
+              gap: '24px',
+              maxWidth: '1400px',
             }}
           >
-            <h2 style={{ marginBottom: '16px', fontSize: '18px', fontWeight: '600' }}>
-              Student Information
-            </h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <InfoRow label="Matric No" value={studentInfo.MATRIC_NO} />
-              <InfoRow label="Cohort" value={new Date(studentInfo.COHORT).getFullYear()} />
-              <InfoRow label="Status" value={studentInfo.STUDENT_STATUS} />
-              <InfoRow label="Semester" value={studentInfo.SEM || '-'} />
-              <InfoRow label="CU ID" value={studentInfo.CU_ID || '-'} />
-              <InfoRow label="IC No" value={studentInfo.IC_NO || '-'} />
-              <InfoRow label="Mobile No" value={studentInfo.MOBILE_NO || '-'} />
-              <InfoRow label="Email" value={studentInfo.EMAIL || '-'} />
-              <InfoRow label="BM" value={studentInfo.BM || '-'} />
-              <InfoRow label="English" value={studentInfo.ENGLISH || '-'} />
-              <InfoRow label="Entry Qualification" value={studentInfo.ENTRY_Q || '-'} />
+            {/* Left Column: Basic Info */}
+            <div
+              style={{
+                border: '1px solid #ddd',
+                borderRadius: '8px',
+                padding: '20px',
+                background: 'white',
+              }}
+            >
+              <h2 style={{ marginBottom: '16px', fontSize: '18px', fontWeight: '600' }}>
+                Student Information
+              </h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <InfoRow label="Matric No" value={studentInfo.MATRIC_NO} />
+                <InfoRow label="Cohort" value={new Date(studentInfo.COHORT).getFullYear()} />
+                <InfoRow label="Status" value={studentInfo.STUDENT_STATUS} />
+                <InfoRow label="Semester" value={studentInfo.SEM || '-'} />
+                <InfoRow label="CU ID" value={studentInfo.CU_ID || '-'} />
+                <InfoRow label="IC No" value={studentInfo.IC_NO || '-'} />
+                <InfoRow label="Mobile No" value={studentInfo.MOBILE_NO || '-'} />
+                <InfoRow label="Email" value={studentInfo.EMAIL || '-'} />
+                <InfoRow label="BM" value={studentInfo.BM || '-'} />
+                <InfoRow label="English" value={studentInfo.ENGLISH || '-'} />
+                <InfoRow label="Entry Qualification" value={studentInfo.ENTRY_Q || '-'} />
+              </div>
             </div>
-          </div>
 
-          {/* Right Column: Prediction - Only applicable to 'Active' students */}
-          <StudentPredictionCard 
-          matricNo={matricNo}
-          studentStatus={studentInfo.STUDENT_STATUS} />
-        </div>
+            {/* Right Column: Prediction - Only applicable to 'Active' students */}
+            <StudentPredictionCard 
+            matricNo={matricNo}
+            studentStatus={studentInfo.STUDENT_STATUS} />
+          </div>
+        ) : (
+          <StudentScoresReport matricNo={matricNo} />
+        )}
       </div>
     </div>
   );

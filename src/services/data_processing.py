@@ -115,6 +115,10 @@ def process_student_datasheet(file_path, sheet_info, output_folder):
             except Exception as e:
                 print(f"⚠️ Could not format Cohort dates: {str(e)}")
 
+        # Strip spaces from all string columns in student_df
+        for col in student_df.select_dtypes(include=['object']).columns:
+            student_df[col] = student_df[col].apply(lambda x: x.strip() if isinstance(x, str) else x)
+
         student_file = os.path.join(output_folder, f"{sheet_name}_Student.csv")
         student_df.to_csv(student_file, index=False, encoding='utf-8-sig')
         print(f"\n✅ Saved {len(student_df)} student records to {student_file}")
@@ -222,6 +226,10 @@ def process_student_datasheet(file_path, sheet_info, output_folder):
         # -------------------------------
         # Save
         # -------------------------------
+        # Strip spaces from all string columns in score_df
+        for col in score_df.select_dtypes(include=['object']).columns:
+            score_df[col] = score_df[col].apply(lambda x: x.strip() if isinstance(x, str) else x)
+
         score_file = os.path.join(output_folder, f"{sheet_name}_Student_Score.csv")
         score_df.to_csv(score_file, index=False, encoding='utf-8-sig')
         print(f"✅ Saved {len(score_df)} score records to {score_file}")

@@ -1698,6 +1698,112 @@ def update_student(student_id):
             cursor.close()
             conn.close()
     
+def get_latest_score(score_row):
+    """
+    Determines the latest numeric score based on update timestamps.
+    """
+    attempts = []
+
+    # Check Attempt 1
+    try:
+        attempt1_score = float(score_row['ATTEMPT_1'])
+        if score_row['A1_UPDATED_AT']:
+            attempts.append({'score': attempt1_score, 'timestamp': score_row['A1_UPDATED_AT']})
+    except (ValueError, TypeError):
+        pass # Not a float or is None
+
+    # Check Attempt 2
+    try:
+        attempt2_score = float(score_row['ATTEMPT_2'])
+        if score_row['A2_UPDATED_AT']:
+            attempts.append({'score': attempt2_score, 'timestamp': score_row['A2_UPDATED_AT']})
+    except (ValueError, TypeError):
+        pass
+
+    # Check Attempt 3
+    try:
+        attempt3_score = float(score_row['ATTEMPT_3'])
+        if score_row['A3_UPDATED_AT']:
+            attempts.append({'score': attempt3_score, 'timestamp': score_row['A3_UPDATED_AT']})
+    except (ValueError, TypeError):
+        pass
+
+    if not attempts:
+        return '-'
+
+    # Find the attempt with the latest timestamp
+    latest_attempt = max(attempts, key=lambda x: x['timestamp'])
+
+    return latest_attempt['score']
+
+@app.route('/api/students/<string:matric_no>/scores-report', methods=['GET'])
+def get_student_scores_detailed_report(matric_no):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        query = """
+            SELECT
+                ss.COURSE_CODE,
+                cs.MODULE,
+                cs.COURSE_YEAR,
+                ss.ATTEMPT_1,
+                ss.ATTEMPT_2,
+                ss.ATTEMPT_3,
+                ss.A1_UPDATED_AT,
+                ss.A2_UPDATED_AT,
+                ss.A3_UPDATED_AT
+            FROM STUDENT_SCORE ss
+            LEFT JOIN (
+                SELECT *, ROW_NUMBER() OVER(PARTITION BY COURSE_CODE ORDER BY (SELECT NULL)) as rn
+                FROM COURSE_STRUCTURE
+            ) cs ON ss.COURSE_CODE = cs.COURSE_CODE AND cs.rn = 1
+            WHERE ss.MATRIC_NO = ?
+            ORDER BY cs.COURSE_PRIORITY, ss.COURSE_CODE;
+        """
+
+        cursor.execute(query, (matric_no,))
+        
+        columns = [column[0] for column in cursor.description]
+        rows = cursor.fetchall()
+        
+        all_scores = [dict(zip(columns, row)) for row in rows]
+        
+        cursor.close()
+        conn.close()
+
+        # coursesByYear uses the default sort order from SQL (by year, then code)
+        coursesByYear = []
+        for score in all_scores:
+            latest_score_value = get_latest_score(score)
+            coursesByYear.append({
+                'COURSE_YEAR': score['COURSE_YEAR'] or 'Uncategorized',
+                'COURSE_CODE': score['COURSE_CODE'],
+                'MODULE': score['MODULE'] or 'N/A',
+                'RESULT': latest_score_value
+            })
+
+        # allAttempts should be sorted purely by COURSE_CODE
+        allAttempts = []
+        # Sort the base data by COURSE_CODE for this specific list
+        for score in sorted(all_scores, key=lambda x: x['COURSE_CODE'] or ''):
+            allAttempts.append({
+                'COURSE_CODE': score['COURSE_CODE'],
+                'MODULE': score['MODULE'] or 'N/A',
+                'ATTEMPT_1': score['ATTEMPT_1'],
+                'ATTEMPT_2': score['ATTEMPT_2'],
+                'ATTEMPT_3': score['ATTEMPT_3']
+            })
+        
+        return jsonify({
+            'coursesByYear': coursesByYear,
+            'allAttempts': allAttempts
+        }), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Failed to get detailed scores report for {matric_no}: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/verify-2fa-setup', methods=['POST'])
 def verify_admin_2fa_setup():
     try:
@@ -1831,9 +1937,10 @@ def api_add_program():
     try:
         data = request.get_json()
         program_code = data.get('program_code')
+        program_description = data.get('program_description')
         if not program_code:
             return jsonify({'error': 'program_code is required'}), 400
-        add_program(program_code)
+        add_program(program_code, program_description)
         return jsonify({'message': 'Program added successfully'}), 201
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1844,9 +1951,10 @@ def api_update_program(program_code):
     try:
         data = request.get_json()
         new_program_code = data.get('new_program_code')
+        program_description = data.get('program_description')
         if not new_program_code:
             return jsonify({'error': 'new_program_code is required'}), 400
-        update_program(program_code, new_program_code)
+        update_program(program_code, new_program_code, program_description)
         return jsonify({'message': 'Program updated successfully'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500

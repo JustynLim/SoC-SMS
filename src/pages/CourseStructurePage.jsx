@@ -11,6 +11,14 @@ export default function CourseStructurePage() {
   const { data, loading, error, setData } = Course_Structure();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [lecturers, setLecturers] = useState([]);
+  const [statusFilter, setStatusFilter] = useState(() => {
+    const savedFilter = localStorage.getItem('courseStatusFilter');
+    return savedFilter || 'All';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('courseStatusFilter', statusFilter);
+  }, [statusFilter]);
 
   useEffect(() => {
     const fetchLecturers = async () => {
@@ -58,9 +66,17 @@ export default function CourseStructurePage() {
 
   if (loading) return <p>Loading...</p>;
   if (error) return <p style={{ color: "red" }}>Error: {error}</p>;
+
+  const filteredData = data.filter(course => {
+    if (statusFilter === 'All') {
+        return true;
+    }
+    return course.COURSE_STATUS === statusFilter;
+  });
+
   if (!data.length) return <p>No data found.</p>;
 
-  const coursesByYear = data.reduce((acc, course) => {
+  const coursesByYear = filteredData.reduce((acc, course) => {
     const year = course.COURSE_YEAR || 'Uncategorized';
     if (!acc[year]) acc[year] = [];
     acc[year].push(course);
@@ -161,6 +177,19 @@ export default function CourseStructurePage() {
           maxWidth: '95%', 
           width: 'fit-content' 
         }}>
+          <div className="flex justify-end mb-4">
+            <label htmlFor="status-filter" className="mr-2 self-center font-medium">Filter by Status:</label>
+            <select
+                id="status-filter"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="border rounded-md p-2 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+                <option value="All">All</option>
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
+            </select>
+          </div>
           <div style={{
             maxHeight: 'calc(100vh - 150px)',
             overflowY: 'auto',
@@ -196,37 +225,47 @@ export default function CourseStructurePage() {
                 </tr>
               </thead>
               <tbody>
-                {sortedYears.map((year) => (
-                  <React.Fragment key={`year-${year}`}>
-                    <tr style={{
-                      backgroundColor: '#e9ecef',
-                      position: 'sticky',
-                      top: '40px',
-                      zIndex: 5
-                    }}>
-                      <td colSpan={columns.length + 1} style={{
-                        fontWeight: 'bold',
-                        padding: '8px',
-                        fontSize: '1.1em'
-                      }}>
-                        {year}
-                      </td>
-                    </tr>
-                    {coursesByYear[year].map((course, index) => (
-                      <CourseStructureRow
-                        key={`${course.COURSE_CODE}-${course.PROGRAM_CODE}`}
-                        course={course}
-                        columns={columns}
-                        columnMapping={columnMapping}
-                        shouldCenter={shouldCenter}
-                        onUpdate={handleUpdateCourse}
-                        onDelete={handleDeleteCourse}
-                        getCellValue={getCellValue}
-                        lecturers={lecturers}
-                      />
-                    ))}
-                  </React.Fragment>
-                ))}
+                {filteredData.length > 0 ? (
+                  sortedYears.map((year) => (
+                    coursesByYear[year] && (
+                      <React.Fragment key={`year-${year}`}>
+                        <tr style={{
+                          backgroundColor: '#e9ecef',
+                          position: 'sticky',
+                          top: '40px',
+                          zIndex: 5
+                        }}>
+                          <td colSpan={columns.length + 1} style={{
+                            fontWeight: 'bold',
+                            padding: '8px',
+                            fontSize: '1.1em'
+                          }}>
+                            {year}
+                          </td>
+                        </tr>
+                        {coursesByYear[year].map((course, index) => (
+                          <CourseStructureRow
+                            key={`${course.COURSE_CODE}-${course.PROGRAM_CODE}`}
+                            course={course}
+                            columns={columns}
+                            columnMapping={columnMapping}
+                            shouldCenter={shouldCenter}
+                            onUpdate={handleUpdateCourse}
+                            onDelete={handleDeleteCourse}
+                            getCellValue={getCellValue}
+                            lecturers={lecturers}
+                          />
+                        ))}
+                      </React.Fragment>
+                    )
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={columns.length + 1} className="text-center p-4">
+                      No courses match the filter '{statusFilter}'.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
