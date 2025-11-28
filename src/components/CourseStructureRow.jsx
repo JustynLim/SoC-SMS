@@ -83,6 +83,12 @@ const CourseStructureRow = ({ course, columns, columnMapping, onUpdate, onDelete
     if (colKey === 'COURSE_LEVEL') {
         return <EditableCell name={colKey} value={value} onChange={handleEditChange} type="select" options={[1, 2, 3]} />;
     }
+    if (colKey === 'COURSE_CLASSIFICATION') {
+      return <EditableCell name={colKey} value={value} onChange={handleEditChange} type="select" options={['', 'Major', 'Minor']} />;
+    }
+    if (colKey === 'PRE_CO_REQ') {
+      return <EditableCell name={colKey} value={value} onChange={handleEditChange} type="select" options={['', 'CS', 'CT', 'CS&CT']} />;
+    }
     if (['CREDIT_HOUR', 'CU_CW_CREDITS', 'CU_EX_CREDITS'].includes(colKey)) {
       return <EditableCell name={colKey} value={value} onChange={handleEditChange} type="number" />;
     }

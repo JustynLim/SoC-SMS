@@ -23,32 +23,51 @@ const initialState = {
 const AddCourseModal = ({ isOpen, onClose, onCourseAdded }) => {
   const [formData, setFormData] = useState(initialState);
   const [programs, setPrograms] = useState([]);
+  const [lecturers, setLecturers] = useState([]);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
   useEffect(() => {
     if (isOpen) {
-      const fetchPrograms = async () => {
+      const fetchData = async () => {
         try {
-          const res = await api.get("/admin/programs"); // Use api instance
-          setPrograms(res.data);
-          if (res.data.length > 0) {
-            setFormData((prev) => ({ ...prev, PROGRAM_CODE: res.data[0] }));
-          }
+          const [programsRes, lecturersRes] = await Promise.all([
+            api.get('/admin/programs'),
+            api.get('/admin/lecturers') // Corrected path
+          ]);
+
+          const programsData = programsRes.data;
+          const lecturersData = lecturersRes.data;
+
+          setPrograms(programsData);
+          setLecturers(lecturersData);
+
+          const defaultProgram = programsData.length > 0
+            ? (typeof programsData[0] === 'object' ? programsData[0].PROGRAM_CODE : programsData[0])
+            : '';
+
+          // Reset form on open and set defaults
+          setFormData({
+            ...initialState,
+            PROGRAM_CODE: defaultProgram,
+            LECTURER: '' // Default to empty string, user must select
+          });
+          
+          setError(null);
+          setSuccess(null);
+
         } catch (err) {
           if (err.response && err.response.status === 401) {
             setError("Session expired. Redirecting to login...");
             localStorage.removeItem("token");
-            setTimeout(() => {
-              window.location.href = "/login";
-            }, 2000);
+            setTimeout(() => { window.location.href = "/login"; }, 2000);
           } else {
-            setError("Failed to fetch programs.");
+            setError("Failed to fetch form data.");
             console.error(err);
           }
         }
       };
-      fetchPrograms();
+      fetchData();
     }
   }, [isOpen]);
 
@@ -63,14 +82,12 @@ const AddCourseModal = ({ isOpen, onClose, onCourseAdded }) => {
     setSuccess(null);
 
     try {
-      const res = await api.post("/course-structure", formData); // Use api instance
+      const res = await api.post("/course-structure", formData);
       setSuccess(res.data.message);
       onCourseAdded(); // Callback to refresh the course list
       
-      // Close modal after a delay and reset the form
       setTimeout(() => {
         onClose();
-        setFormData(initialState);
       }, 1500);
 
     } catch (err) {
@@ -107,8 +124,7 @@ const AddCourseModal = ({ isOpen, onClose, onCourseAdded }) => {
             <InputField name="CU_CW_Credits" label="CU-CW Credits" type="number" value={formData.CU_CW_Credits} onChange={handleChange} />
             <InputField name="CU_EX_Credits" label="CU-EX Credits" type="number" value={formData.CU_EX_Credits} onChange={handleChange} />
             <SelectField name="COURSE_LEVEL" label="Level" value={formData.COURSE_LEVEL} onChange={handleChange} options={[1, 2, 3]} required />
-            <InputField name="LECTURER" label="Lecturer" value={formData.LECTURER} onChange={handleChange} />
-            
+            <SelectField name="LECTURER" label="Lecturer" value={formData.LECTURER} onChange={handleChange} options={['', ...lecturers]} />
             <SelectField name="COURSE_YEAR" label="Course Year" value={formData.COURSE_YEAR} onChange={handleChange} options={['Year 1', 'Year 2', 'Year 3', 'Compulsory']} required />
             <SelectField name="COURSE_STATUS" label="Course Status" value={formData.COURSE_STATUS} onChange={handleChange} options={['Active', 'Inactive']} required />
             <SelectField name="PROGRAM_CODE" label="Program Code" value={formData.PROGRAM_CODE} onChange={handleChange} options={programs} required />
@@ -149,9 +165,11 @@ const SelectField = ({ name, label, value, onChange, options, required = false }
       required={required}
       className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
     >
-      {options.map((option) => (
-        <option key={option} value={option}>{option}</option>
-      ))}
+      {options.map((option) => {
+        const optionValue = typeof option === 'object' && option !== null ? option.PROGRAM_CODE : option;
+        const optionLabel = typeof option === 'object' && option !== null ? `${option.PROGRAM_CODE} - ${option.PROGRAM_DESCRIPTION || ''}` : option;
+        return <option key={optionValue} value={optionValue}>{optionLabel}</option>;
+      })}
     </select>
   </div>
 );
